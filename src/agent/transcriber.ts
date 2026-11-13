@@ -9,7 +9,7 @@ import { inlineParseNumberFn, inlineSameValueFn, sameValuePoll } from './parse-n
 // so the spec and the in-process check agree.
 import { COMPARE_POLL_TIMEOUT_MS, relationsByVarName } from './replay.js';
 import { captureWaitNeeded, inlineAwaitCaptureReadyFn } from './capture-ready.js';
-import { absentCounterReadExpr, inlineReadCounterTextFn, usesAbsentCounter } from './absent-counter.js';
+import { absentCounterReadExpr, compareReadsAbsentAsZero, inlineReadCounterTextFn, usesAbsentCounter } from './absent-counter.js';
 import { allItemsPollLine } from './all-items.js';
 import type { Assertion, CaptureSource, CredentialMarker, RunReport, Scenario, SelectorRecord, TraceStep } from './trace.js';
 import { AUTH_ENV_PASS, AUTH_ENV_USER, findHappyLoginScenario } from './auth-emit.js';
@@ -206,7 +206,10 @@ function emitStep(step: TraceStep, relations: Map<string, string> = new Map()): 
       // The re-read element is the compare's own target when it named one
       // (the detail heading against the captured listing name).
       const readFrom = step.readTarget ?? step.target;
-      const rhs = step.absentAsZero
+      // An absent counter re-read reads "0" for greater, less, changed, before
+      // and after; an equal or unchanged compare re-reads the normal way, so
+      // the spec fails when the counter is absent (compareReadsAbsentAsZero).
+      const rhs = compareReadsAbsentAsZero(step)
         ? absentCounterReadExpr(locFirst(readFrom), 'compare')
         : captureReadExpr(step.source, locFirst(readFrom), locCount(readFrom), step.attribute);
       const pollOpts = `{ timeout: ${COMPARE_POLL_TIMEOUT_MS} }`;

@@ -10,7 +10,7 @@ import { frameLocatorForChain } from './selectors.js';
 import { captureActualState } from './actual-state.js';
 import { parseNumber, noNumberMessage, sameValue } from './parse-number.js';
 import { pollAllItems } from './all-items.js';
-import { ABSENT_COUNTER_GRACE_MS, readCounterText } from './absent-counter.js';
+import { ABSENT_COUNTER_GRACE_MS, compareReadsAbsentAsZero, readCounterText } from './absent-counter.js';
 
 /**
  * Reality check.
@@ -413,7 +413,11 @@ export async function runStep(
       const held = await pollUntil(
         timeoutMs,
         async () => {
-          current = step.absentAsZero
+          // An absent counter re-read reads "0" (invariant 80) for greater,
+          // less, changed, before and after. An equal or unchanged compare
+          // re-reads the normal way, which fails when no element matches:
+          // "0" on both sides of an absent counter proves nothing.
+          current = compareReadsAbsentAsZero(step)
             ? await readCounterText(locatorFromRecord(page, readFrom).first(), 0)
             : await readStepValue(page, step.source, readFrom, step.attribute);
           return compareHolds(step.relation, captured, current);

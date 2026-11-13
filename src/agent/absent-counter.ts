@@ -102,7 +102,27 @@ export function absentCounterReadExpr(locFirstExpr: string, kind: 'capture' | 'c
   return `await readCounterText(${locFirstExpr}, ${kind === 'capture' ? ABSENT_COUNTER_GRACE_MS : 0})`;
 }
 
-/** True when a step list reads an absent counter (the emitters import or inline the helper only then). */
-export function usesAbsentCounter(steps: ReadonlyArray<{ kind: string; absentAsZero?: true }>): boolean {
-  return steps.some((s) => (s.kind === 'capture' || s.kind === 'assert_compare') && s.absentAsZero === true);
+/**
+ * True when an absentAsZero compare re-read reads an absent counter as "0":
+ * greater, less, changed, before and after. An equal or unchanged compare
+ * never does: with the counter absent at capture AND at the re-read both
+ * sides read "0" and the check proves nothing (the PR #60 review), so replay
+ * and both emitters re-read such a compare the normal way, which fails when
+ * no element matches. The tool refuses to record the vacuous case
+ * (absentCounterCompareError in tools.ts); this is the one decision replay,
+ * the POM emitter and the single-file emitter share.
+ */
+export function compareReadsAbsentAsZero(step: { absentAsZero?: true; relation: string }): boolean {
+  return step.absentAsZero === true && step.relation !== 'equal' && step.relation !== 'unchanged';
+}
+
+/**
+ * True when a step list reads an absent counter through the helper (the
+ * emitters import or inline it only then): a capture flagged absentAsZero,
+ * or a compare whose re-read reads "0" (compareReadsAbsentAsZero). An equal
+ * or unchanged compare re-reads the normal way, so it alone never ships the helper.
+ */
+export function usesAbsentCounter(steps: ReadonlyArray<{ kind: string; absentAsZero?: true; relation?: string }>): boolean {
+  return steps.some((s) => (s.kind === 'capture' && s.absentAsZero === true)
+    || (s.kind === 'assert_compare' && compareReadsAbsentAsZero({ absentAsZero: s.absentAsZero, relation: s.relation ?? '' })));
 }

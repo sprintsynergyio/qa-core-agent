@@ -7,7 +7,7 @@ import { regexLiteral, textExpectation } from './transcriber.js';
 import { allItemsPollLine } from './all-items.js';
 import { COMPARE_POLL_TIMEOUT_MS, relationsByVarName } from './replay.js';
 import { sameValuePoll } from './parse-number.js';
-import { absentCounterReadExpr, usesAbsentCounter } from './absent-counter.js';
+import { absentCounterReadExpr, compareReadsAbsentAsZero, usesAbsentCounter } from './absent-counter.js';
 import { captureWaitNeeded } from './capture-ready.js';
 import { deriveDatasets, renderDatasetJson, recordedSelects, type DatasetCase, type DatasetSelect, type FeatureDataset } from './datasets.js';
 import { AUTH_ENV_PASS, AUTH_ENV_USER, envVarForFill, findHappyLoginScenario, loginFeatureOf, recordedCredentials, reportUsesTestAccount, sessionGroups, stripLeadingLogin, type AuthCredentials } from './auth-emit.js';
@@ -1441,7 +1441,10 @@ function emitStepCall(step: TraceStep, pc: PageClassPlan, handle: string, creds:
       // expires, the web-first wait Playwright already uses for locators.
       // The re-read element is the compare's own target when it named one.
       const readFrom = step.readTarget ?? step.target;
-      const readRhs = step.absentAsZero
+      // An absent counter re-read reads "0" for greater, less, changed, before
+      // and after; an equal or unchanged compare re-reads the normal way, so
+      // the spec fails when the counter is absent (compareReadsAbsentAsZero).
+      const readRhs = compareReadsAbsentAsZero(step)
         ? absentCounterReadExpr(emitLocatorCall(readFrom.level, readFrom.arg, true, readFrom.frameChain, readFrom.filterText), 'compare')
         : captureRhs(step.source, readFrom, step.attribute);
       const pollOpts = `{ timeout: ${COMPARE_POLL_TIMEOUT_MS} }`;

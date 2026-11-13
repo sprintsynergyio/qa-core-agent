@@ -780,6 +780,7 @@ using the qa-core-heal evaluation report as the template.
   cache still serves the history (invariant 80). Locked by
   smoke-absent-counter and smoke-history-prune. Still open from D5:
   RULE 9 refusing a cart row count by its quantity inputs.
+  Review fix: equal or unchanged on a counter absent on both reads is refused (PR #60 review).
 - D6 (run 8): ADDRESSED (PR #60, engine/run8-cost-findings, not
   merged). Product behavior seen and not recorded as findings: quantity
   0 still adds an item. The repair pass started a fresh retry count, so

@@ -43,6 +43,21 @@ import {
 const OUTCOME_RETRY_CAP = 2;
 
 /**
+ * The engine-owned marker of a vacuous counter compare (invariant 80, the
+ * PR #60 review): an equal or unchanged compare whose counter matched no
+ * element at capture AND at the re-read that held reads "0" on both sides
+ * and proves nothing. It is refused as a tool error before anything is
+ * recorded: never an outcome failure, never counted toward OUTCOME_RETRY_CAP,
+ * never a finding. Smokes match a refusal on this token, never on the text.
+ */
+export const ABSENT_COUNTER_COMPARE_REFUSAL = 'matched no element at capture and at re-read, so both sides read 0 and the check proves nothing';
+
+/** The whole refusal: the relation, the counter's intent, the token and the way out. */
+export function absentCounterCompareError(relation: 'equal' | 'unchanged', intent: string): string {
+  return `assert_compare(${relation}): the counter at ${intent} ${ABSENT_COUNTER_COMPARE_REFUSAL}. Make the counter appear first (for example add one item), capture it, act, then compare; or compare with greater, less or changed.`;
+}
+
+/**
  * Steps a scenario already in progress may run PAST the budget purely to close
  * itself out: assert the outcome, capture/compare, end_scenario. This salvages a
  * scenario that spent the budget filling a long form and only needs its cheap
@@ -1539,22 +1554,32 @@ async function pollRelation(
   budgetMs: number,
   target: SelectorRecord = entry.target,
   counter = false,
-): Promise<{ held: boolean; current: string; sawAbsent: boolean }> {
+): Promise<{ held: boolean; current: string; sawAbsent: boolean; heldAbsent: boolean }> {
   const deadline = Date.now() + budgetMs;
   let current = '';
-  // Whether a counter re-read found no element (it read "0"), so the step
+  // Whether ANY counter re-read found no element (it read "0"), so the step
   // records absentAsZero and replay and the emitted spec read it the same way.
   let sawAbsent = false;
   for (;;) {
+    // Whether THIS poll's read found no element. Only the read that makes
+    // the relation hold decides heldAbsent (an absent read on both sides of
+    // an equal or unchanged compare proves nothing); sawAbsent can come from
+    // an earlier poll and is never a substitute for it.
+    let absentNow = false;
     try {
-      if (counter && (await baseLocator(page, target).first().count()) === 0) sawAbsent = true;
-      current = await readBySource(page, entry, target, counter);
-      if (relationHolds(relation, entry.value, current)) return { held: true, current, sawAbsent };
+      if (counter && (await baseLocator(page, target).first().count()) === 0) {
+        sawAbsent = true;
+        absentNow = true;
+        current = '0'; // what readCounterText reads for an absent counter with no grace
+      } else {
+        current = await readBySource(page, entry, target, counter);
+      }
+      if (relationHolds(relation, entry.value, current)) return { held: true, current, sawAbsent, heldAbsent: absentNow };
     } catch {
       // The element is not there yet (or not at all): keep polling to the deadline.
       current = '';
     }
-    if (Date.now() >= deadline) return { held: false, current, sawAbsent };
+    if (Date.now() >= deadline) return { held: false, current, sawAbsent, heldAbsent: false };
     await new Promise((r) => setTimeout(r, 200));
   }
 }
@@ -2033,6 +2058,13 @@ async function runToolInner(ctx: ToolContext, call: ToolInput): Promise<ToolResu
               return { ok: false, error: `assert_compare(${relation}): ${noNumberMessage(ok.current)} at ${(readTarget ?? entry.target).intent}; captured "${entry.value}". The re-read element holds no number.` };
             }
             return await outcomeFailure(ctx, compareSig, `the re-read ${entry.source} of ${(readTarget ?? entry.target).intent} to be ${COMPARE_RELATION_WORDS[relation as Exclude<CompareRelation, 'absent'>].toLowerCase()} the captured "${entry.value}"`, `assert_compare(${relation}): captured "${entry.value}", now "${ok.current}" — relation does not hold.`);
+          }
+          // A counter absent at capture AND at the re-read that held reads "0"
+          // on both sides, so equal / unchanged holds without checking anything
+          // (the PR #60 review). A tool error, before anything is recorded:
+          // never an outcome failure, never the retry cap, never a finding.
+          if ((relation === 'equal' || relation === 'unchanged') && entry.absentAsZero && ok.heldAbsent) {
+            return { ok: false, error: absentCounterCompareError(relation, (readTarget ?? entry.target).intent) };
           }
         }
         ctx._assertFailures.delete(compareSig);
