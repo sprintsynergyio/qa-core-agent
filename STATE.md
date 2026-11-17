@@ -1,11 +1,11 @@
 # QA-Core STATE
 
-Updated: 2026-10-23. Update this file at the end of every working day.
+Updated: 2026-11-17. Update this file at the end of every working day.
 It is the first thing to read in any new thread.
 
 ## What QA-Core is
 
-An autonomous QA agent (repo sprintsynergyhq/qa-core-agent, main branch is truth).
+An autonomous QA agent (repo sprintsynergyio/qa-core-agent, main branch is truth).
 Pipeline: Planner (Haiku) plans scenarios, Explorer (Opus 4.7) drives a real
 browser and records steps, Critic (Sonnet 4.6) grades every scenario pass /
 rework / reject with a one-pass repair for rework, Replay re-runs everything
@@ -20,9 +20,9 @@ served at http://127.0.0.1:18789/, MCP server. All three build runs through
 src/agent/explore-request.ts.
 
 Verification: npx tsc --noEmit, then npm run smoke (the suite is discovered
-from scripts/, 97 smokes, 2 of them live and skipped unless
-QA_CORE_LIVE_SMOKES=1 is set; smoke-all reports "97 smokes, 95 passed, 0
-failed, 2 skipped (live)").
+from scripts/, 112 smokes, 2 of them live and skipped unless
+QA_CORE_LIVE_SMOKES=1 is set; smoke-all reports "112 smokes, 110 passed, 0
+failed, 2 skipped (live)" at PR #60).
 Before any live run: npx tsx scripts/preflight-site.ts <url> --login (every run now makes the same login preflight itself before any spend, invariant 70).
 
 ## Maturity pass: complete (Phases 1 to 5 merged, Sept 3 to 14)
@@ -137,7 +137,10 @@ Oct 6.
    graded against the bar below. Run 7 done Oct 23, bar missed; diagnosis
    docs/audit/run-59540f-diagnosis.md. Fix PRs #53 to #56 merged Oct 23 to
    29 (D1 to D7i of run 7, except D6's cause). Run 8 moves to a
-   self-hosted Toolshop; its bar is below.
+   self-hosted Toolshop; its bar is below. Run 8 done Nov 2, bar missed;
+   diagnosis docs/audit/run-71d739-diagnosis.md. Fix PRs #59 (merged Nov 5)
+   and #60 (merged Nov 17) address D1 to D7, D8b and D8f. Run 9 next, on
+   the same local Toolshop; its bar is below, written before the run.
 Exit bar (written Oct 6, before the run): rework rate under 35 percent on
 the first Critic pass; shipped and rules covered reported, not targeted;
 emitted-spec check green for every shipped test; zero shipped tests whose
@@ -390,6 +393,52 @@ check skipped by the stop (D5, D3). The wrong-password scenario ran 5
 times and the test account no longer signs in: unlock it or re-seed
 before any further run on the local Toolshop.
 
+### Run 9 bar (written Nov 17, before the run)
+
+a. Benchmark. The same self-hosted Toolshop as run 8, unchanged: /Users/osman/Projects/toolshop-local at commit ae7caecb, SPRINT=sprint5, the local robots.txt edit of run 8 part a, the seeded customer2 account as QA_CORE_TEST_USER_LOCALHOST / QA_CORE_TEST_PASS_LOCALHOST in .env (values in .env only). Run 8 locked that account (D2); the re-seed in part c unlocks it. Run 9 is compared line for line with run 8.
+
+b. Command. Run 8's command, unchanged:
+
+```bash
+cd /Users/osman/Projects/Openclaw/qa-core-agent && npm run explore -- http://localhost:4200/ --srs output/practicesoftwaretesting-com/20260918T163858Z-5e4394/toolshop-srs.md --ceiling 6 --lang ts --pom --replay --stability 3 --stabilize --stabilize-attempts 3
+```
+
+Models are the defaults, with no override in the shell or .env, exactly as in run 8 part b. `cost.models` on run-report.json must read claude-haiku-4-5 for the requirements map, page filter, feature parser and Planner, claude-opus-4-7 for the Explorer, and claude-sonnet-4-6 for the Critic and the Stabilizer; any other value voids the run as run 9. The requirements map is run 8's (output/localhost/srs/ac278ddf17eb/requirements-map.json), so R1 to R14 mean what they meant in runs 7 and 8 and the console prints "requirements map: reused". `QA_CORE_WRONG_PASSWORD_CAP` is not set, so the default cap of 3 applies (invariant 79).
+
+c. Preconditions. Any one failing means no run.
+- main at the PR #60 merge (2f7a6e0) or later; `git status` clean.
+- Toolshop up: `cd /Users/osman/Projects/toolshop-local && docker compose up -d && docker compose up -d web`, then `curl -sS -o /dev/null -w "%{http_code}" "http://localhost:8091/products?page=1"` prints 200.
+- `curl -s http://localhost:4200/robots.txt` shows no /auth and no /checkout line.
+- Data re-seeded right before the run, which also unlocks the account: `cd /Users/osman/Projects/toolshop-local && docker compose exec laravel-api php artisan migrate:fresh --seed`.
+- `cd /Users/osman/Projects/Openclaw/qa-core-agent && npx tsx scripts/preflight-site.ts http://localhost:4200/ --login` prints LOGIN OK right after the re-seed.
+- `grep -n '^QA_CORE_.*MODEL' .env; env | grep '^QA_CORE_.*MODEL'` prints only QA_CORE_MODEL_TRANSCRIBE and QA_CORE_MODEL_ROUTER.
+- `grep -n '^QA_CORE_WRONG_PASSWORD_CAP' .env; env | grep '^QA_CORE_WRONG_PASSWORD_CAP'` prints nothing.
+- `ls output/localhost/srs/ac278ddf17eb/requirements-map.json` lists the file.
+
+d. The bar. Graded; every file is in the run 9 folder under output/localhost/.
+1. Rework rate under 35 percent on the FIRST Critic pass, measured exactly as run 8 line 1 (numerator `review.repair` entries; denominator the verdicts in the first `critic_done` event). Rules changed since run 8: a count-0 absence no longer answers an only, all, every or each claim (PR #59), and a first-pass rework with no required fix is asked again once; a scenario kept that way still counts in `review.repair` (invariant 79), so the rate is never lowered by that rule. Run 8: 46.7 percent.
+2. Every SRS feature gets a page, as run 8 line 2: `candidates` in discovery.json carry catalogue, contact and account by a path segment, and the cart entry of `stateProbes` reads outcome `revealed`. Run 8: met.
+3. The emitted-spec check ran and is green for every shipped test: `emittedRun.inconclusive` is not true, `emittedRun.notRun` is absent, and every `emittedRun.tests` entry for a shipped test has status `passed`. A cost-ceiling stop now runs the check (invariant 79), so a ceiling stop is no reason for it not to run. The honest measure (passed over every `emittedRun.tests` entry) is reported beside it. Run 8: missed, not run.
+4. Zero shipped tests whose name claims more than the recording proves. Graded by hand by the advisor, test by test, from the zip's tests/**/*.spec.ts against each scenario's steps, `pageUrl` and cited rules. A name with only, all, every or each needs an all-items assertion; a name with none or no needs an all-items or a count-0 absence assertion. Run 8: 1.
+5. The happy login survives replay, as run 8 line 5: its replay verdict has `passed: true` and no `refused`; no such entry is a miss. Run 8: met, by run order.
+6. The test account still signs in after the run: `lockoutWarning` is absent on run-report.json, and `npx tsx scripts/preflight-site.ts http://localhost:4200/ --login` prints LOGIN OK after the run, before any re-seed. Reported beside it: `wrongPasswordAttempts` (count, byStage, refused) and `stability.credentialSafetySkipped`. Run 8: missed in substance (the account was locked by the end; this line did not exist).
+7. Every product finding is real. Each `findings` entry of kind `product` is checked by hand at $0 against the local Toolshop (the page in a browser, or the local API at http://localhost:8091), and classified as real product behavior (a site bug, or site behavior the SRS contradicts) or an agent mistake (a wrong locator, a wrong expectation, a misread page). Zero agent mistakes to pass; zero findings passes too. Locator findings (kind `locator`) are reported, not graded. Run 8: no findings recorded, though two behaviors were seen (D6). Reason for the line: since PR #60 a compare that does not hold counts toward the retry cap, so an Explorer mistake can now become a finding.
+8. Reported, not targeted: shipped (`reconciliation.generated`), rules covered over 14 by the report, and the same rules read by hand (fully, partly, not), because D8a is still open and the report can credit a rule the test does not exercise. Run 8: 10 shipped; 10 of 14 by the report; by hand 5 fully, 2 partly.
+
+e. Measured and recorded, not graded.
+- Everything in run 8 part e, read the same way.
+- Explorer cost per recorded scenario on the main pass: (`cost.usd` minus `cost.repairUsd`) over the scenarios the main pass recorded. Run 8: $0.3413; run 7: $0.1712.
+- Mean context per Explorer call (input plus cache read plus cache write tokens, from `cost.calls`), and its first and last values. Run 8: mean 51,028, from 16,467 to 78,895.
+- The prompt cache check of invariant 53: in every `cost.calls` entry after the second, `cacheRead` is greater than `input + cacheCreation`.
+- Never-explored scenarios (`reconciliation.incomplete` with "never explored"). Run 8: 5.
+- Findings by kind, each with its Expected and Received lines; a finding the repair pass recorded is marked on its `review.repair` journey.
+- First-pass reworks with no required fix: how many were re-asked, and how many were kept with "critic rework without a required fix; kept".
+- Steps recorded with `absentAsZero: true`, and whether R6 is covered.
+- In the zip's playwright.config.ts, which features run in the `signed-in` project and which in `chromium`.
+- Run 8's D6 cases: if a quantity-0 edge or the Hammer filter is planned, its outcome (shipped, finding, or dropped, with the reason).
+
+f. Rules for the run. One run. A missed bar is recorded as missed, never re-run to improve the number. If the run stops before the Critic (a crash, a billing error, a preflight stop), it is not graded: the cause is diagnosed at $0, and the owner decides whether a second attempt counts as run 9. Re-seed after the run, whatever line 6 shows.
+
 ### Opus 5.5 comparison (planned; runs only if the owner approves)
 
 The run 7 command with only QA_CORE_EXPLORER_MODEL=claude-opus-5-5 set
@@ -556,7 +605,7 @@ using the qa-core-heal evaluation report as the template.
   with no finding recorded. docs/audit/run-44cb3d-diagnosis.md. Locked by
   smoke-planned-page; whether the Explorer records the empty page as a
   finding is untested live.
-- D3 (run 6): ADDRESSED (PR #42, engine/rework-rate, Oct 6, not merged):
+- D3 (run 6): ADDRESSED (PR #42, engine/rework-rate, Oct 6, merged):
   two unjustified Critic reworks (a success message the site never shows; a
   timeout already at the gate floor) and cart verdicts that took a badge
   element count for the badge's value. docs/audit/run-44cb3d-diagnosis.md.
@@ -593,13 +642,13 @@ using the qa-core-heal evaluation report as the template.
   account under a name that claims a wrong password for a known one, and
   Toolshop R11 (duplicate email) cannot be automated; belongs to the
   own-account design. docs/audit/run-44cb3d-diagnosis.md.
-- D8 (run 6): ADDRESSED (PR #48, engine/console-honesty, Oct 14, not
+- D8 (run 6): ADDRESSED (PR #48, engine/console-honesty, Oct 14,
   merged): console contradictions (two rule-coverage totals, a stale
   first-pass Critic paragraph, the repair budget printed as a ceiling stop,
   a wrong no-discovered-page warning, the repair decision line cut by the
   240-character cap). docs/audit/run-44cb3d-diagnosis.md section 3, D8.
   Invariant 72; locked by smoke-console-honesty and smoke-repair-block.
-- D1 (run 7): ADDRESSED (PR #53, engine/discovery-seed, not merged).
+- D1 (run 7): ADDRESSED (PR #53, engine/discovery-seed, merged).
   Discovery returned at the sitemap rung when it yielded any page;
   Toolshop's new sitemap lists 3 URLs, so the crawl never ran and no
   category or product page was planned. Now the sitemap is a seed: unless
@@ -608,7 +657,7 @@ using the qa-core-heal evaluation report as the template.
   (invariant 75). The site's robots.txt still keeps /auth and /checkout out
   of every remote rung (D7a, reported now, not changed).
   docs/audit/run-59540f-diagnosis.md, D1. Locked by smoke-discovery-ladder.
-- D7a (run 7), reporting: ADDRESSED (PR #53, engine/discovery-seed, not
+- D7a (run 7), reporting: ADDRESSED (PR #53, engine/discovery-seed,
   merged). Robots skips were silent. Now every skipped path and its rule is
   on discovery.robotsSkipped (report and discovery.json), a feature only a
   skipped path carries prints one line and one warning, and its uncited
@@ -617,17 +666,17 @@ using the qa-core-heal evaluation report as the template.
   site; run 8 moves to a self-hosted Toolshop. Locked by
   smoke-discovery-ladder, smoke-index, smoke-projects, smoke-run-detail and
   smoke-console-log.
-- D7e (run 7): ADDRESSED (PR #53, engine/discovery-seed, not merged). The
+- D7e (run 7): ADDRESSED (PR #53, engine/discovery-seed, merged). The
   per-page cap cut R3's only citer silently. Now a rule's only citer is
   kept first, the line names every cut with its rules, the cuts are on the
   report as planTrimmed, and a rule only a cut scenario cited reads
   cut-by-page-cap. Locked by smoke-page-cap.
-- D7i (run 7): ADDRESSED (PR #53, engine/discovery-seed, not merged). The
+- D7i (run 7): ADDRESSED (PR #53, engine/discovery-seed, merged). The
   run folder had no console.log. Now the CLI writes every console line to
   console.log in the run folder on every end, credential-masked, never in
   the zip. Gateway and MCP runs still keep events.jsonl only. Locked by
   smoke-console-log.
-- D2 (run 7): ADDRESSED (PR #56, engine/probe-planner, not merged).
+- D2 (run 7): ADDRESSED (PR #56, engine/probe-planner, merged).
   The state probe looked for a trigger only on candidate pages and never
   hopped from a listing into an item, so "Add to cart" on a product page
   was never found from /. Now a candidate with no trigger whose item links
@@ -640,7 +689,7 @@ using the qa-core-heal evaluation report as the template.
   item page, and its uncited revealed-side rules read robots-disallowed
   (invariant 78). Locked by smoke-state-probe (L, M).
   docs/audit/run-59540f-diagnosis.md, D2.
-- D7f (run 7): ADDRESSED (PR #56, engine/probe-planner, not merged).
+- D7f (run 7): ADDRESSED (PR #56, engine/probe-planner, merged).
   The catalogue edge R5 scenario was planned on / and again on /privacy;
   the names overlap 0.69, under the 0.75 rule, so both stayed and the
   Explorer spent a call skipping one. Now the same feature, category and
@@ -650,7 +699,7 @@ using the qa-core-heal evaluation report as the template.
   evidence is kept over one a model tag placed (invariant 78). Locked by
   smoke-plan-page-fit (F9) and smoke-state-probe (L11).
   docs/audit/run-59540f-diagnosis.md, D7f.
-- D3 (run 7): ADDRESSED (PR #54, engine/critic-compare, not merged).
+- D3 (run 7): ADDRESSED (PR #54, engine/critic-compare, merged).
   Critic errors: a compare after select_option called vacuous, "greater"
   read in the wrong direction, the capture's locator read as the polling
   source, and a "$" demanded on a price the page renders as "14.15"; both
@@ -662,7 +711,7 @@ using the qa-core-heal evaluation report as the template.
   recorded value contradicts (invariant 76). Locked by smoke-critic-parse.
   scripts/critic-input.ts prints any run's Critic input at $0.
   docs/audit/run-59540f-diagnosis.md, D3.
-- D4 (run 7): ADDRESSED (PR #54, engine/critic-compare, not merged).
+- D4 (run 7): ADDRESSED (PR #54, engine/critic-compare, merged).
   assert_compare equal compared raw text: "$14.15" against "14.15" failed
   while greater and less parse the number, so R5's "same price" could not
   be recorded. Now equal, unchanged and changed compare two plain numbers
@@ -670,7 +719,7 @@ using the qa-core-heal evaluation report as the template.
   (helpers/same-value in the framework); other text compares exactly
   (invariant 76). Locked by smoke-capture-compare and smoke-emitted-run.
   docs/audit/run-59540f-diagnosis.md, D4.
-- D7d (run 7): ADDRESSED (PR #54, engine/critic-compare, not merged).
+- D7d (run 7): ADDRESSED (PR #54, engine/critic-compare, merged).
   The Critic's flagging rule 2 reworked any check of something already true
   before the action, while doctrine rule 8 allows it as a secondary sanity
   check; three of the four first-pass reworks hit such a check. Now one
@@ -679,13 +728,13 @@ using the qa-core-heal evaluation report as the template.
   required fix beside a real one (invariant 76). This changes what counts
   as a rework; run 8's bar is written after this merges. Locked by
   smoke-prompt-agreement. docs/audit/run-59540f-diagnosis.md, D7d.
-- D7g (run 7): ADDRESSED (PR #54, engine/critic-compare, not merged).
+- D7g (run 7): ADDRESSED (PR #54, engine/critic-compare, merged).
   The Explorer tried both compare directions because the assert_compare
   tool description never said which side is which. Now it states "re-read
   RELATION captured", greater as re-read > captured and less as re-read <
   captured (invariant 76). Locked by smoke-prompt-agreement.
   docs/audit/run-59540f-diagnosis.md, D7g.
-- D5 (run 7): ADDRESSED (PR #55, engine/emitter-assertions, not merged).
+- D5 (run 7): ADDRESSED (PR #55, engine/emitter-assertions, merged).
   A shipped test name claims "only matching" while the recording checks
   the first card only; the Critic passed it. Now the assert tool records
   allItemsMatch: one read of every item's text holds at least 1 item and
@@ -699,7 +748,7 @@ using the qa-core-heal evaluation report as the template.
   with it in place. Fixed in review: the two checks read at different
   moments passed a list that cleared while loading; now one snapshot
   decides both (PR #55 review). docs/audit/run-59540f-diagnosis.md, D5.
-- D7b (run 7): ADDRESSED (PR #55, engine/emitter-assertions, not merged).
+- D7b (run 7): ADDRESSED (PR #55, engine/emitter-assertions, merged).
   The R14 data case asserted toContainText(c.errorText ?? '') with no
   errorText (its pattern assertion was dropped) and used the happy case's
   subject. Now a data error case carries every check its own recording made
@@ -708,17 +757,17 @@ using the qa-core-heal evaluation report as the template.
   one line and ships as its own test; no emitter writes an empty text
   expectation (invariant 77). Locked by smoke-dataset-errors,
   smoke-datasets, smoke-param-emit and smoke-emitted-run.
-- D7c (run 7): ADDRESSED (PR #55, engine/emitter-assertions, not merged).
+- D7c (run 7): ADDRESSED (PR #55, engine/emitter-assertions, merged).
   A count-0 check on getByTestId("contact-submit") matched nothing on a
   data-test site and could never fail. Now an absence on a testid hint
   reads the host's test-id attribute (css [data-test=...]), keeps testid
   on a data-testid host, and is refused before any get_dom (invariant 77).
   Locked by smoke-absence-testid.
-- D7h (run 7): ADDRESSED (PR #55, engine/emitter-assertions, not merged).
+- D7h (run 7): ADDRESSED (PR #55, engine/emitter-assertions, merged).
   A text probe given 15000 waited 60 s. Now toHaveText and toContainText
   probes wait the model's timeout below the ceiling, the ceiling without
   one (invariant 77). Locked by smoke-compare-poll.
-- D6 (run 7): reporting part ADDRESSED (PR #53, engine/discovery-seed, not
+- D6 (run 7): reporting part ADDRESSED (PR #53, engine/discovery-seed,
   merged), cause still OPEN. The contact first-name negative dropped at
   replay: the page showed the success message in a fresh context after the
   Explorer saw the error twice. Now the drop reason appends what the page
@@ -728,7 +777,7 @@ using the qa-core-heal evaluation report as the template.
   (advisor decision Oct 23). docs/audit/run-59540f-diagnosis.md, D6.
 - Run 8 (71d739) items, ranked, most severe first. All in
   docs/audit/run-71d739-diagnosis.md, section 3.
-- D1 (run 8): ADDRESSED (PR #59, engine/run8-fixes, not merged). A
+- D1 (run 8): ADDRESSED (PR #59, engine/run8-fixes, merged). A
   universal claim is met by a count-0 absence on an empty list: "only
   hammers remained" ships green while the filter left no product. RULE 7
   refused the all-items form (the checkbox label is not a typed value),
@@ -739,7 +788,7 @@ using the qa-core-heal evaluation report as the template.
   tool and the gate; an all-items pattern may be the label of a filter
   the scenario checked or selected (invariant 79). Locked by
   smoke-filter-claims, smoke-prompt-agreement and smoke-critic-parse.
-- D2 (run 8): ADDRESSED (PR #59, engine/run8-fixes, not merged),
+- D2 (run 8): ADDRESSED (PR #59, engine/run8-fixes, merged),
   decided Nov 3: no wrong-password scenario in stability, cap 3, serial
   emitted login tests (invariant 70 f). The wrong-password scenario ran
   5 times (explorer 1, replay 1, stability 3) and locked the dedicated
@@ -750,7 +799,7 @@ using the qa-core-heal evaluation report as the template.
   (invariant 79). Locked by smoke-lockout-safety (a fixture that locks
   after 3 failed logins in a row still signs in after a full $0 pass and
   two framework runs) and smoke-test-credentials.
-- D3 (run 8): ADDRESSED (PR #59, engine/run8-fixes, not merged). A
+- D3 (run 8): ADDRESSED (PR #59, engine/run8-fixes, merged). A
   cost-ceiling stop skips the $0 emitted-spec check (emitted-check.ts
   line 383 skips every stopped run), so the zip ships unverified and the
   README does not say so. Now a cost-ceiling stop runs the check; any
@@ -758,7 +807,7 @@ using the qa-core-heal evaluation report as the template.
   was written: <reason>." first in its README, records emittedCheck
   "skipped" with the reason in run-meta.json and says so on the console
   (invariant 79). Locked by smoke-emitted-check (F).
-- D4 (run 8): ADDRESSED (PR #59, engine/run8-fixes, not merged). Two
+- D4 (run 8): ADDRESSED (PR #59, engine/run8-fixes, merged). Two
   first-pass reworks list no required fix and call the scenario
   acceptable in their own reasons; both dropped at the repair stage. Now
   such a rework is asked again once naming the contradiction; still no
@@ -767,7 +816,7 @@ using the qa-core-heal evaluation report as the template.
   the first-pass rework rate is never lowered (invariant 79). Locked by
   smoke-critic-parse (T) and smoke-repair-pass (M), with the two verdicts
   verbatim.
-- D5 (run 8): ADDRESSED (PR #60, engine/run8-cost-findings, not
+- D5 (run 8): ADDRESSED (PR #60, engine/run8-cost-findings,
   merged). A counter absent before the first add cannot be recorded
   (RULE 9 refuses a count capture, a text capture cannot resolve), so R6
   dropped on a fix the page cannot satisfy. Explorer cost per recorded
@@ -781,7 +830,7 @@ using the qa-core-heal evaluation report as the template.
   smoke-absent-counter and smoke-history-prune. Still open from D5:
   RULE 9 refusing a cart row count by its quantity inputs.
   Review fix: equal or unchanged on a counter absent on both reads is refused (PR #60 review).
-- D6 (run 8): ADDRESSED (PR #60, engine/run8-cost-findings, not
+- D6 (run 8): ADDRESSED (PR #60, engine/run8-cost-findings,
   merged). Product behavior seen and not recorded as findings: quantity
   0 still adds an item. The repair pass started a fresh retry count, so
   one failure in each pass never reached the cap. Now the repair starts
@@ -793,7 +842,7 @@ using the qa-core-heal evaluation report as the template.
   Case (b), the Hammer filter emptying the list, is not changed here:
   since PR #59 its "only" claim needs an all-items check, which fails on
   an empty list, and two failures of that check record a finding.
-- D7 (run 8): ADDRESSED (PR #59, engine/run8-fixes, not merged).
+- D7 (run 8): ADDRESSED (PR #59, engine/run8-fixes, merged).
   Attempt 1's page filter printed a billing error as "(deterministic
   fallback)" with no reason (standing rule 2). Now every fallback line
   names its reason, and a billing error stops the run at the page filter
@@ -804,7 +853,7 @@ using the qa-core-heal evaluation report as the template.
 - D8a (run 8): OPEN, brief first, after run 9. Rule coverage credits R1
   and R12 to tests that do not exercise them (the citation check reads
   the category only).
-- D8b (run 8): ADDRESSED (PR #60, engine/run8-cost-findings, not
+- D8b (run 8): ADDRESSED (PR #60, engine/run8-cost-findings,
   merged). The same-page overlap drop below, seen live (events line 19):
   the login empty-password negative was merged into the empty-email one
   on /auth/login. Now the overlap and evidence rules compare only
@@ -813,12 +862,12 @@ using the qa-core-heal evaluation report as the template.
 - D8c to D8e (run 8): OPEN, smaller items: (c) a bound toHaveValue
   misreads a clamped field; (d) a product name inside a locator is not
   refused; (e) page-object field names keep the first intent.
-- D8f (run 8): ADDRESSED (PR #60, engine/run8-cost-findings, not
+- D8f (run 8): ADDRESSED (PR #60, engine/run8-cost-findings,
   merged). The shipped specs ran signed in, the recordings signed out.
   Now only a feature whose every recording signed in at its start runs on
   the storageState session; every other spec runs signed out, as
   recorded (invariant 80). Locked by smoke-signed-out-specs.
-- ADDRESSED (PR #56, engine/probe-planner, not merged): the global
+- ADDRESSED (PR #56, engine/probe-planner, merged): the global
   20-scenario plan cap in planAcrossPages cut without naming what it cut
   (found in PR #53). Now it names every scenario it cuts with its rules
   and every page it leaves unplanned, records them (planTrimmed cause
@@ -832,19 +881,19 @@ using the qa-core-heal evaluation report as the template.
   end summary go only to the client (found in PR #53).
 - OPEN: sameValue reads "007" and "7" as the same value (leading zeros);
   kept on purpose, revisit if an id compare needs it (PR #54 review).
-- ADDRESSED (PR #55, engine/emitter-assertions, not merged): The repair
+- ADDRESSED (PR #55, engine/emitter-assertions, merged): The repair
   review has no rule for a listed fix the page cannot satisfy (run 7 D3 b);
   only the first-pass prompt does (PR #54). Now a fix a passing assertion in
   the repair recording contradicts is judged applied, "not satisfiable: the
   page renders ..." (invariant 77). Locked by smoke-prompt-agreement.
-- ADDRESSED (PR #56, engine/probe-planner, not merged) (found in PR
+- ADDRESSED (PR #56, engine/probe-planner, merged) (found in PR
   #55): pom.ts named a synthesized fill-and-click method after the click's
   first intent word; when that equals a page-object field name ("search
   submit button" next to the "search input" field), the field shadowed the
   method and the spec threw "cataloguePage.search is not a function". Now
   a taken name gets "Action", then a number (searchAction) (invariant 78).
   Locked by smoke-pom-methods.
-- ADDRESSED (PR #56, engine/probe-planner, not merged) (found in PR
+- ADDRESSED (PR #56, engine/probe-planner, merged) (found in PR
   #55): pom.ts, in a feature whose scenarios start on different URLs,
   emitted the synthesized action method call before the test's own
   page.goto, so the method acted on a blank page. Now the call sits where
@@ -857,7 +906,7 @@ using the qa-core-heal evaluation report as the template.
   representative's first URL for every case. The emitted-spec check would
   drop such a case; the emitter should carry each case's own expected text
   and page.
-- ADDRESSED (PR #60, engine/run8-cost-findings, not merged) (found in PR
+- ADDRESSED (PR #60, engine/run8-cost-findings, merged) (found in PR
   #56): the cross-page overlap rule (invariant 73) also compared
   scenarios planned on the same page, so two same-page scenarios with the
   same rules and names overlapping 0.75 were dropped as a "cross-page
@@ -879,35 +928,35 @@ using the qa-core-heal evaluation report as the template.
   (invariant 71, click action). Untested live until the confirmation run.
 - Login action for authenticated pages (brief section 7), after the
   confirmation run.
-- ADDRESSED (engine/dropped-traces, Oct 8, not merged): Dropped scenarios
+- ADDRESSED (PR #43, engine/dropped-traces, merged): Dropped scenarios
   keep only their name and verdict on the run-report; their recorded steps
   are lost, so a drop cannot be diagnosed from the artefact alone. Now
   run-report.droppedTraces keeps every drop's trace, credential-redacted in
   every copy (invariant 69). Locked by smoke-dropped-traces.
-- ADDRESSED (engine/dropped-traces, Oct 8, not merged):
+- ADDRESSED (PR #43, engine/dropped-traces, merged):
   reconciliation.dropped carries the Critic's echo of a scenario name (one
   run 3 drop lost its quotation marks); identity fields must carry the
   plan's canonical name (standing rule 1). Now every drop and emitted_failed
   entry is filed under the planned name with recordedName kept, and a drop
   with no planned match is a loud line; scripts/dropped-traces-check.ts maps
   27 of 27 drops of runs 3, 5 and 6.
-- ADDRESSED (PR #48, engine/console-honesty, Oct 14, not merged):
+- ADDRESSED (PR #48, engine/console-honesty, Oct 14, merged):
   runtime passes the critique client seam through, so the repair block can
   be driven with a fixture Critic (found in #32). Now ExploreOptions.critique
   (and explorerClient) reach the first review and the repair review;
   smoke-repair-block drives the whole block at $0.
-- ADDRESSED (PR #49, engine/small-items, Oct 15, not merged): testid hints
+- ADDRESSED (PR #49, engine/small-items, Oct 15, merged): testid hints
   recorded as css because the site uses data-test; emit getByTestId with
   testIdAttribute in the config instead. Now an all-data-test recording
   (no step at level testid) emits getByTestId and the config line; mixed
   attributes emit as before; a prefix selector stays css (invariant 73).
-- ADDRESSED (PR #49, engine/small-items, Oct 15, not merged): Explorer
+- ADDRESSED (PR #49, engine/small-items, Oct 15, merged): Explorer
   start-up waste: an orientation load of the entry page before the first
   planned scenario although the plan names each page. Now the first message
   of a multi-page plan starts at scenario 1, and report.orientationCalls
   plus one console line make the waste measurable (invariant 73). Untested
   live until the confirmation run.
-- ADDRESSED (PR #53, engine/discovery-seed, not merged): the dashboard's
+- ADDRESSED (PR #53, engine/discovery-seed, merged): the dashboard's
   rule table showed not-reachable and not-revealed as not planned (no index
   column). Now the index keeps the precise reason and detail (schema v8)
   and the table shows them. Locked by smoke-projects.
@@ -929,12 +978,12 @@ using the qa-core-heal evaluation report as the template.
   logs in through its own recorded steps. Owner decision A (Oct 9): no new
   tag in PR #45; design it with the action-first discovery rung (phase
   item 4).
-- ADDRESSED (PR #49, engine/small-items, Oct 15, not merged): RULE 7
+- ADDRESSED (PR #49, engine/small-items, Oct 15, merged): RULE 7
   refused the "Products" page title (.title) as catalogue data, a heading
   false positive (phase item 6, D9). Now the strong catalogue marker is read
   off the locator only and a heading locator is exempt unless the locator
   carries it (invariant 73).
-- ADDRESSED (PR #49, engine/small-items, Oct 15, not merged): the other D9
+- ADDRESSED (PR #49, engine/small-items, Oct 15, merged): the other D9
   items (run 6): cross-page dedup missed two reworded duplicate-email
   negatives (now one scenario at a 0.75 name overlap with the same feature,
   category and rule ids); a toHaveAttribute probe waited 60 s (now the 10 s
@@ -953,19 +1002,24 @@ using the qa-core-heal evaluation report as the template.
   filter scenario cited R3, the category filter). Deferred until after the
   confirmation run, because the fix changes the Critic's duties and would
   confound the rework rate measurement. Checked by hand when grading run 7.
-- ADDRESSED (PR #48, engine/console-honesty, Oct 14, not merged): The
+- ADDRESSED (PR #48, engine/console-honesty, Oct 14, merged): The
   console printed 'Feature "login" has 4 rules and no discovered page' on
   saucedemo, then 4 of 4 covered. Now the line prints after planning and
   only when the plan does not carry the feature either.
-- ADDRESSED (PR #48, engine/console-honesty, Oct 14, not merged): The
+- ADDRESSED (PR #48, engine/console-honesty, Oct 14, merged): The
   skip reason "test credentials not provided" is wrong when credentials
   were set but no login page was found. Now "no login page found; test
   credentials were set", at plan time and at a marked fill.
-- ADDRESSED (PR #48, engine/console-honesty, Oct 14, not merged): The
+- ADDRESSED (PR #48, engine/console-honesty, Oct 14, merged): The
   console line "Run the framework: cd <run dir> && npm install" is
   misleading: the run folder holds only the zip. Now the steps unzip the
   real zip and cd into the extracted folder first.
 - CI only type-checks; the smoke suite in CI is backlog.
+- CI runner pinned to ubuntu-24.04 (PR #61, Nov 17): ubuntu-latest moved to
+  Ubuntu 26.04, where Playwright 1.60 cannot install Chromium. Remove the
+  pin when a Playwright release supports 26.04, and raise the emitted
+  framework's Playwright pin (~1.60.0) at the same time, since a client's
+  CI on ubuntu-latest hits the same install failure.
 - Run 7c78fc (saucedemo, Oct 1): its zip holds a playwright/.auth session
   file from the public demo account, made before the PR #45 guard. Keep the
   folder (the audit appendix references it); never share that zip.
@@ -973,12 +1027,12 @@ using the qa-core-heal evaluation report as the template.
   (says no .git, 7 smokes, an old repo URL).
 - recheck-run.ts spends one wrong-password submit against the account's cap
   per recheck.
-- ADDRESSED (PR #48, engine/console-honesty, Oct 14, not merged): Run
+- ADDRESSED (PR #48, engine/console-honesty, Oct 14, merged): Run
   5 R9: ruleCoverage reads planned-but-dropped with no detail while the
   scenario is in reconciliation.incomplete (cost ceiling mid-scenario); a
   ceiling cut must never read as a drop (standing rule 2). Now
   planned-not-explored with "cost ceiling hit mid-scenario".
-- ADDRESSED (PR #48, engine/console-honesty, Oct 14, not merged): The
+- ADDRESSED (PR #48, engine/console-honesty, Oct 14, merged): The
   page-fit rejection line carries no rule ids, so a rejected scenario's
   citations cannot be traced from the artifact. Now it ends with
   "(cited R4, R5)" or "(cited no rule)".
