@@ -139,8 +139,9 @@ Oct 6.
    29 (D1 to D7i of run 7, except D6's cause). Run 8 moves to a
    self-hosted Toolshop; its bar is below. Run 8 done Nov 2, bar missed;
    diagnosis docs/audit/run-71d739-diagnosis.md. Fix PRs #59 (merged Nov 5)
-   and #60 (merged Nov 17) address D1 to D7, D8b and D8f. Run 9 next, on
-   the same local Toolshop; its bar is below, written before the run.
+   and #60 (merged Nov 17) address D1 to D7, D8b and D8f. Run 9 done
+   Nov 17 on the same local Toolshop, bar missed on lines 3, 4 and 7;
+   diagnosis docs/audit/run-b4e41b-diagnosis.md.
 Exit bar (written Oct 6, before the run): rework rate under 35 percent on
 the first Critic pass; shipped and rules covered reported, not targeted;
 emitted-spec check green for every shipped test; zero shipped tests whose
@@ -439,6 +440,41 @@ e. Measured and recorded, not graded.
 
 f. Rules for the run. One run. A missed bar is recorded as missed, never re-run to improve the number. If the run stops before the Critic (a crash, a billing error, a preflight stop), it is not graded: the cause is diagnosed at $0, and the owner decides whether a second attempt counts as run 9. Re-seed after the run, whatever line 6 shows.
 
+Run 9 verdict: bar missed on lines 3, 4 and 7, met on lines 1, 2, 5 and 6,
+line 8 reported. Run 20261117T120141Z-b4e41b, $4.73 (under the ceiling),
+12 min 8 s; `cost.models` matched part b, so it counts as run 9.
+Diagnosis: docs/audit/run-b4e41b-diagnosis.md.
+
+1. Met: 4 reworks of 18 on the first pass, 22.2 percent (run 8: 46.7).
+2. Met: catalogue, account and contact by a path segment; the cart probe
+   revealed /checkout through the item hop.
+3. Missed: the check ran; 17 of 18 shipped tests passed and the
+   wrong-password test was not run, because the cap of 3 was spent by
+   the explorer, the repair and replay (D2). The a11y spec failed twice
+   and ships red (D6). Honest measure 18 of 20.
+4. Missed: 6. The cart removal reads no total; four negatives (login
+   empty email and empty password, forgot-password empty and malformed)
+   claim an error the recording does not prove, because their class
+   pattern matches `ng-invalid`, present before submit (D1), and the two
+   forgot-password tests cannot fail at all; the R14 contact test types a
+   46-character message the site rejects anyway (D4). Stricter than run
+   8's reading. The price sort stays borderline, not counted.
+5. Met: the happy login passed replay, not refused.
+6. Met: the post-run sign-in worked and the owner's preflight after the
+   run read LOGIN OK; 3 wrong-password submits.
+7. Missed: the one product finding is an agent mistake. The happy reset
+   typed a generated, unregistered email; Toolshop refuses it (HTTP 422,
+   "The selected email is invalid.", owner's curl) and shows the error in
+   an alert that hides after 3 s; the finding was filed as product from
+   an invented selector that never resolved (D3).
+8. Reported: 18 shipped; 12 of 14 rules by the report; by hand 5 fully,
+   5 partly, 2 not (D8a).
+
+What moved: Explorer $0.2246 per recorded scenario (run 8 $0.3413),
+main-pass context capped near 50K tokens (run 8 79K), no scenario left
+unexplored, the account still signs in. Next: one $0 fix PR for D1 to D4
+and D6, then run 10 with the same bar.
+
 ### Opus 5.5 comparison (planned; runs only if the owner approves)
 
 The run 7 command with only QA_CORE_EXPLORER_MODEL=claude-opus-5-5 set
@@ -566,10 +602,11 @@ ceiling. A new baseline, not compared line for line with the table above.
 | Run | Date | After | Pages | Planned | Explored | Shipped | Cost | End | Diagnosis |
 |---|---|---|---|---|---|---|---|---|---|
 | 8 71d739 | Nov 2 | #53 to #57 | 10 (8 crawl, 2 by action), 9 planned | 20 | 15 | 10 | $6.20 | stopped at the explorer's share, framework written, emitted check not run, test account locked | docs/audit/run-71d739-diagnosis.md |
+| 9 b4e41b | Nov 17 | #59 to #62 | 9 (7 crawl, 2 by action), 9 planned | 20 | 18 | 18 | $4.73 | completed; emitted check 17 of 18 shipped (wrong-password test not run); account still signs in | docs/audit/run-b4e41b-diagnosis.md |
 
 Attempt 1 (20261102T125106Z-d2c5df) stopped on API credit exhaustion at
 its first Planner call, $0 spent, not graded. Live spend on the local
-Toolshop to date: $6.20 over one graded run.
+Toolshop to date: $10.93 over two graded runs.
 
 ## The audit plan
 
@@ -850,9 +887,35 @@ using the qa-core-heal evaluation report as the template.
   (stop line, no state to resume), and the Critic and the Stabilizer (at
   once: nothing ships unreviewed or unverified) (invariant 79). Locked by
   smoke-page-filter (K) and smoke-billing-stops.
-- D8a (run 8): OPEN, brief first, after run 9. Rule coverage credits R1
+- D8a (run 8): OPEN, brief first. Rule coverage credits R1
   and R12 to tests that do not exercise them (the citation check reads
-  the category only).
+  the category only). Run 9: R1 by a category-page sort, R12 partly by
+  login-form tests, R14 by a test rejected for its message length.
+- Run 9 (b4e41b) items, ranked. All in docs/audit/run-b4e41b-diagnosis.md,
+  section 3.
+- D1 (run 9): OPEN. A class assertion /(ng-invalid|is-invalid|error)/ on
+  a form field passes before submit (Angular sets ng-invalid at form
+  build) and was accepted as a user-visible error; eight shipped
+  negatives use it, two forgot-password tests cannot fail.
+- D2 (run 9): OPEN, owner decision. The wrong-password cap of 3 is spent
+  by explorer, repair and replay before the emitted check, so the check
+  can never run a repaired wrong-password test. Options in the diagnosis;
+  advisor: reserve one submit for the check.
+- D3 (run 9): OPEN. A happy reset planned with a generated, unregistered
+  email (impossible on a site that validates existence); a 3 s alert
+  missed by captureActualState; and a first "Could not resolve element"
+  counted toward the outcome cap (tools.ts assertWithRetryCap), so an
+  invented selector became a product finding.
+- D4 (run 9): OPEN. A negative's other fields are not checked valid: the
+  R14 test's message is under the site's 50-character minimum.
+- D5 (run 9): OPEN. A role plus label that missed fell to
+  getByRole('button').first() and clicked a Testing Guide button; label
+  is not a locating hint (invariant 60).
+- D6 (run 9): OPEN. The a11y spec ships red and the README says nothing
+  about the emitted check, the red test or the unrun test.
+- D7 (run 9): OPEN. R2 planned only on pages without a search box (home
+  page planned 0); R5 planned on /rentals without product evidence and
+  skipped; R5's coverage reads planned-but-dropped for a skip.
 - D8b (run 8): ADDRESSED (PR #60, engine/run8-cost-findings,
   merged). The same-page overlap drop below, seen live (events line 19):
   the login empty-password negative was merged into the empty-email one
