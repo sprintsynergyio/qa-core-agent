@@ -893,26 +893,45 @@ using the qa-core-heal evaluation report as the template.
   login-form tests, R14 by a test rejected for its message length.
 - Run 9 (b4e41b) items, ranked. All in docs/audit/run-b4e41b-diagnosis.md,
   section 3.
-- D1 (run 9): OPEN. A class assertion /(ng-invalid|is-invalid|error)/ on
-  a form field passes before submit (Angular sets ng-invalid at form
-  build) and was accepted as a user-visible error; eight shipped
-  negatives use it, two forgot-password tests cannot fail.
+- D1 (run 9): ADDRESSED (PR #64, engine/run9-fixes, not merged). A class
+  assertion /(ng-invalid|is-invalid|error)/ on a form field passes before
+  submit (Angular sets ng-invalid at form build) and was accepted as a
+  user-visible error; eight shipped negatives use it, two forgot-password
+  tests cannot fail. Now gate RULE 10 refuses a class check matching a
+  framework state class at the tool and the gate, and doctrine rule 3
+  says so (invariant 81). Locked by smoke-run9-fixes.
 - D2 (run 9): OPEN, owner decision. The wrong-password cap of 3 is spent
   by explorer, repair and replay before the emitted check, so the check
-  can never run a repaired wrong-password test. Options in the diagnosis;
-  advisor: reserve one submit for the check.
-- D3 (run 9): OPEN. A happy reset planned with a generated, unregistered
-  email (impossible on a site that validates existence); a 3 s alert
-  missed by captureActualState; and a first "Could not resolve element"
-  counted toward the outcome cap (tools.ts assertWithRetryCap), so an
-  invented selector became a product finding.
-- D4 (run 9): OPEN. A negative's other fields are not checked valid: the
-  R14 test's message is under the site's 50-character minimum.
+  can never run a repaired wrong-password test. Reserving one submit for
+  the check (option a) does not fit: a repaired wrong-password scenario
+  needs four executions (explore, repair, replay, check) under a cap of 3,
+  so the reservation moves the refusal to replay and the test drops.
+  Remaining options: (b) replay defers a wrong-password scenario to the
+  emitted check, which becomes its independent run (three executions);
+  (c) keep today's behavior, now stated in the README (invariant 81).
+- D3 (run 9): ADDRESSED (PR #64, engine/run9-fixes, not merged). A happy
+  reset planned with a generated, unregistered email (impossible on a
+  site that validates existence); a 3 s alert missed by
+  captureActualState; and a first "Could not resolve element" counted
+  toward the outcome cap (tools.ts assertWithRetryCap), so an invented
+  selector became a product finding. Now the happy reset is dropped at
+  plan time, a message shown then hidden reaches the reading, and a
+  never-found element counts toward the recovery cap only, keyed by its
+  hints (invariant 81). Locked by smoke-run9-fixes.
+- D4 (run 9): ADDRESSED in the prompts only (PR #64, engine/run9-fixes,
+  not merged). A negative's other fields are not checked valid: the R14
+  test's message is under the site's 50-character minimum. Doctrine rule
+  3 now tells the Explorer and the Critic to reuse the happy scenario's
+  values for every other field; no code checks it.
 - D5 (run 9): OPEN. A role plus label that missed fell to
   getByRole('button').first() and clicked a Testing Guide button; label
   is not a locating hint (invariant 60).
-- D6 (run 9): OPEN. The a11y spec ships red and the README says nothing
-  about the emitted check, the red test or the unrun test.
+- D6 (run 9): ADDRESSED (PR #64, engine/run9-fixes, not merged). The
+  a11y spec ships red and the README said nothing about the emitted
+  check, the red test or the unrun test. Now the README ends with an
+  "Emitted-spec check" section naming every test that did not pass and
+  why (invariant 81). Locked by smoke-run9-fixes. The a11y violations
+  are still not recorded as findings.
 - D7 (run 9): OPEN. R2 planned only on pages without a search box (home
   page planned 0); R5 planned on /rentals without product evidence and
   skipped; R5's coverage reads planned-but-dropped for a skip.

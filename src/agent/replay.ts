@@ -7,7 +7,7 @@ import {
 import { generateUnique } from './unique-data.js';
 import { installEvalShim } from './eval-shim.js';
 import { frameLocatorForChain } from './selectors.js';
-import { captureActualState } from './actual-state.js';
+import { captureActualState, installMessageMemory } from './actual-state.js';
 import { parseNumber, noNumberMessage, sameValue } from './parse-number.js';
 import { pollAllItems } from './all-items.js';
 import { ABSENT_COUNTER_GRACE_MS, compareReadsAbsentAsZero, readCounterText } from './absent-counter.js';
@@ -202,6 +202,7 @@ export async function replayScenarioOnce(
 
   const context = await browser.newContext();
   await installEvalShim(context);
+  await installMessageMemory(context);
   const page = await context.newPage();
   page.setDefaultTimeout(timeoutMs);
   page.setDefaultNavigationTimeout(timeoutMs);

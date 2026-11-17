@@ -8,7 +8,7 @@ export { recoverResolve, type ResolveInput };
 import type { Assertion, Scenario, SelectorRecord, TraceStep, CaptureSource, CompareRelation, CredentialMarker, GenerateKind } from './trace.js';
 import { baseLocator } from './replay.js';
 import { detectUniqueField, generateUnique, isEmailField } from './unique-data.js';
-import { runGate, gateRuleLabel, gateBrokenReason, catalogueLiteralReason, selectorLiteralReason, counterLiteralReason, counterCountCaptureReason, generatedIdReason, fragileCompareReason, fragileAssertReason, priceInNameReason, isCounterSelector, type GateViolation } from './gate.js';
+import { runGate, gateRuleLabel, gateBrokenReason, frameworkStateClassReason, catalogueLiteralReason, selectorLiteralReason, counterLiteralReason, counterCountCaptureReason, generatedIdReason, fragileCompareReason, fragileAssertReason, priceInNameReason, isCounterSelector, type GateViolation } from './gate.js';
 import { ABSENT_COUNTER_GRACE_MS, readCounterText } from './absent-counter.js';
 import { COMPARE_RELATION_WORDS } from './critic.js';
 import { captureActualState } from './actual-state.js';
@@ -97,6 +97,20 @@ export const LIVE_PROBE_TIMEOUT_MS = 10_000;
  * the assertion retry-cap) must pass it straight through without double-counting
  * it as an assertion failure.
  */
+/**
+ * A first (or any below-cap) failure to resolve an element, thrown by
+ * recoverOrFinding while the recovery count is under RECOVERY_CAP. It is a
+ * locator problem: assertWithRetryCap passes it straight through and never
+ * counts it toward the outcome cap (run b4e41b D3: an invented selector,
+ * asserted twice, was filed as a product finding).
+ */
+export class UnresolvedElementError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnresolvedElementError';
+  }
+}
+
 export class LocatorFindingError extends Error {
   constructor(message: string) {
     super(message);
@@ -1116,7 +1130,7 @@ async function recoverOrFinding(
   if (attempts < RECOVERY_CAP) {
     // Recovery budget left. Surface the failure so the model can try different
     // hints; the next failure of the SAME selector increments toward the cap.
-    throw new Error(
+    throw new UnresolvedElementError(
       `Could not resolve element: ${input.intent} (hints: ${JSON.stringify(input)}). ` +
       `Automatic re-resolution did not find it either. Check the element exists and try different hints.`,
     );
@@ -1149,10 +1163,11 @@ async function recoverOrFinding(
 
 /** Stable signature of the selector the model asked for, for recovery-attempt counting. */
 function selectorSignature(input: ResolveInput): string {
-  return [
-    input.role ?? '', input.label ?? '', input.testid ?? '',
-    input.css ?? '', input.text ?? '', input.intent ?? '',
-  ].join('|');
+  // Keyed by the locating hints, never the model's intent text when a hint
+  // is given (standing rule 1): run b4e41b asserted the same invented css
+  // twice under two intents and the recovery count never reached its cap.
+  const hints = [input.role ?? '', input.label ?? '', input.testid ?? '', input.css ?? '', input.text ?? ''];
+  return hints.some((h) => h.trim() !== '') ? hints.join('|') : `intent|${input.intent ?? ''}`;
 }
 
 /** Human-readable description of the selector the model asked for (the "from" of a recovery). */
@@ -2961,6 +2976,23 @@ async function assertWithRetryCap(ctx: ToolContext, input: AssertionInput): Prom
       return { ok: false, error: `RULE 7 (literal catalogue value) rejected this assertion: ${r7}.` };
     }
   }
+  // RULE 10 at record time: a class check that matches a framework state
+  // class (ng-invalid at page load) can never fail (run b4e41b D1). Refused
+  // before the probe, nothing recorded.
+  if (ctx.current && input.type === 'toHaveAttribute' && input.attribute != null) {
+    const rx10 = regexSource(input.regex);
+    if (!(rx10 instanceof Error)) {
+      const shape10 = {
+        type: 'toHaveAttribute' as const,
+        target: { level: 'css', arg: '', intent: '' } as SelectorRecord,
+        attribute: String(input.attribute),
+        value: String(input.value ?? ''),
+        ...(typeof rx10 === 'string' ? { pattern: rx10 } : {}),
+      };
+      const r10 = frameworkStateClassReason(shape10);
+      if (r10) return { ok: false, error: `${gateRuleLabel(10)} rejected this assertion: ${r10}.` };
+    }
+  }
   // RULE 3, 6 and 8 at record time, on every assertion with a target: the
   // same checks the end_scenario gate runs, before the probe waits on the
   // element and before the retry cap counts anything.
@@ -2993,6 +3025,11 @@ async function assertWithRetryCap(ctx: ToolContext, input: AssertionInput): Prom
     // so pass it straight through — do NOT count it as an assertion failure or
     // record a second finding.
     if (err instanceof LocatorFindingError) {
+      return { ok: false, error: err.message };
+    }
+    // An element that could not be found yet is a locator problem on its way
+    // to the recovery cap, never an outcome that did not occur (invariant 81).
+    if (err instanceof UnresolvedElementError) {
       return { ok: false, error: err.message };
     }
     return await outcomeFailure(ctx, sig, describeAssertion(input), (err as Error).message);
