@@ -10,6 +10,7 @@ import { frameLocatorForChain } from './selectors.js';
 import { captureActualState } from './actual-state.js';
 import { parseNumber, noNumberMessage, sameValue } from './parse-number.js';
 import { pollAllItems } from './all-items.js';
+import { ABSENT_COUNTER_GRACE_MS, compareReadsAbsentAsZero, readCounterText } from './absent-counter.js';
 
 /**
  * Reality check.
@@ -369,6 +370,13 @@ export async function runStep(
       await runAssertion(page, step.assertion, timeoutMs, credentials);
       return;
     case 'capture': {
+      // An absent counter reads "0" after the counter grace (invariant 80),
+      // the same reader the tool recorded with; the readiness grace below
+      // would wait the whole timeout for a badge a clean cart never shows.
+      if (step.absentAsZero) {
+        captures.set(step.varName, await readCounterText(locatorFromRecord(page, step.target).first(), ABSENT_COUNTER_GRACE_MS));
+        return;
+      }
       await awaitCaptureReady(page, step, captureRelations?.get(step.varName), timeoutMs);
       const value = await readStepValue(page, step.source, step.target, step.attribute);
       captures.set(step.varName, value);
@@ -405,7 +413,13 @@ export async function runStep(
       const held = await pollUntil(
         timeoutMs,
         async () => {
-          current = await readStepValue(page, step.source, readFrom, step.attribute);
+          // An absent counter re-read reads "0" (invariant 80) for greater,
+          // less, changed, before and after. An equal or unchanged compare
+          // re-reads the normal way, which fails when no element matches:
+          // "0" on both sides of an absent counter proves nothing.
+          current = compareReadsAbsentAsZero(step)
+            ? await readCounterText(locatorFromRecord(page, readFrom).first(), 0)
+            : await readStepValue(page, step.source, readFrom, step.attribute);
           return compareHolds(step.relation, captured, current);
         },
         `assert_compare(${step.relation}) did not settle`,
