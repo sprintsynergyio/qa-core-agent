@@ -19,7 +19,7 @@ concurrency:
 jobs:
   test:
     name: Type-check & run generated specs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +57,7 @@ jobs:
   eval:
     name: Eval harness (manual)
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_eval == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: test
     env:
