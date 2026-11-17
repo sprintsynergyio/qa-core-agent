@@ -7,6 +7,7 @@ import { renderRequirementsBlock, type RequirementsMap, type RequirementRule, ty
 import { citationMismatchReason, scenarioNameKey, REJECTION_RULE_RE } from './rule-coverage.js';
 import type { ReachAction } from './discovery.js';
 import { samePage } from './planned-page.js';
+import { FORGOT_FLOW_RE } from './unique-data.js';
 
 /**
  * Planner — Step 1 of the multi-agent pipeline.
@@ -188,7 +189,7 @@ export interface PageFitRejection {
  * and the per-page block (credentialSteeringFor), which names the rules that
  * are the exception.
  */
-export const CREDENTIAL_STEERING = `Sign-ins use the run's dedicated test account, which the Explorer fills from the environment; never plan a scenario around a typed or demo password. A wrong-password negative uses the test account's identifier with a literal wrong password: plan at most one, named for the wrong password. An unknown account is its own negative, named "account does not exist", typed with an invented identifier (no-such-user-7f3k or nobody+7f3k@example.invalid). Sites lock an account after a few failed attempts, and every recorded scenario is re-run at least four more times (one replay plus three stability runs) before it ships, so every wrong-password submit against the test account counts toward a per-run cap and a scenario past it is skipped. A forgot-password or reset scenario types a generated email, never the test account's (a reset would send mail to it). The one exception is a scenario whose point IS the lockout: when a stated rule names a locked or locked-out account, that scenario keeps the real account the rule names and cites the rule.`;
+export const CREDENTIAL_STEERING = `Sign-ins use the run's dedicated test account, which the Explorer fills from the environment; never plan a scenario around a typed or demo password. A wrong-password negative uses the test account's identifier with a literal wrong password: plan at most one, named for the wrong password. An unknown account is its own negative, named "account does not exist", typed with an invented identifier (no-such-user-7f3k or nobody+7f3k@example.invalid). Sites lock an account after a few failed attempts, and every recorded scenario is re-run at least four more times (one replay plus three stability runs) before it ships, so every wrong-password submit against the test account counts toward a per-run cap and a scenario past it is skipped. A forgot-password or reset scenario types a generated email, never the test account's (a reset would send mail to it), so the address is one the site does not know: plan reset scenarios as negatives (an unregistered email is refused, an empty or malformed email is rejected), never a happy reset that expects a confirmation, unless a stated rule says every address gets one. The one exception is a scenario whose point IS the lockout: when a stated rule names a locked or locked-out account, that scenario keeps the real account the rule names and cites the rule.`;
 
 /**
  * The per-page credentials block: the steering above plus which stated rules
@@ -1179,6 +1180,8 @@ export function negatedActionIn(name: string, ruleText: string): string | null {
  * citations, or no map, is never judged. Exported for the smoke.
  */
 export function contradictionReason(s: PlannedScenario, map?: RequirementsMap): string | null {
+  const reset = happyResetReason(s, map);
+  if (reset) return reset;
   if (!map) return null;
   if (s.category !== 'negative' && s.category !== 'edge') return null;
   const ids = (s.ruleIds ?? []).map((id) => id.toUpperCase());
@@ -1195,6 +1198,30 @@ export function contradictionReason(s: PlannedScenario, map?: RequirementsMap): 
     return `a negative scenario whose only cited rules (${rules.map((r) => r.id).join(', ')}) state no rejection (${rules.map((r) => r.type).join(', ')} rules with no rejection wording); there is no failure mode to verify`;
   }
   return null;
+}
+
+/**
+ * A rule stating that the site confirms a reset for any address, registered
+ * or not. Only such a rule makes a happy reset with a generated email
+ * verifiable.
+ */
+const RESET_ANY_ADDRESS_RE = /\b(any|every|each)\s+(e-?mail|address)\b|\bwhether\s+or\s+not\b/i;
+
+/**
+ * A happy password-reset scenario, or null. The reset's email is generated,
+ * never the test account's (invariant 70, owner decision F), so it names an
+ * address the site does not know; a site that checks the address refuses it
+ * (run b4e41b D3: Toolshop answered HTTP 422 "The selected email is invalid."
+ * and the run filed a product finding). Such a scenario is verifiable only
+ * when a cited rule says every address gets a confirmation. Judged on the
+ * planned name and category and the map's rule text, never on model echo.
+ */
+export function happyResetReason(s: PlannedScenario, map?: RequirementsMap): string | null {
+  if (s.category !== 'happy' || !FORGOT_FLOW_RE.test(s.name)) return null;
+  const ids = new Set((s.ruleIds ?? []).map((id) => id.toUpperCase()));
+  const cited = map ? map.features.flatMap((f) => f.rules).filter((r) => ids.has(r.id.toUpperCase())) : [];
+  if (cited.some((r) => RESET_ANY_ADDRESS_RE.test(r.text) && !REJECTION_RULE_RE.test(r.text))) return null;
+  return 'a happy password reset types a generated, unregistered email (a reset never mails the test account), so it can only see what the site shows for an address it does not know; plan it as a negative ("an unregistered email is refused") unless a cited rule says every address gets a confirmation';
 }
 
 /**

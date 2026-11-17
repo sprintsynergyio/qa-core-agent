@@ -299,6 +299,42 @@ function withEmittedRun(report: RunReport, run: EmittedRun): RunReport {
   return report;
 }
 
+/**
+ * The README section that says what the check found (invariant 81, run
+ * b4e41b D6: the a11y spec shipped red and the wrong-password test shipped
+ * unrun, and the README said nothing). Lists every test still in the
+ * framework that did not pass, with why; a test the check dropped is not in
+ * the framework and is not listed. Exported for the smoke.
+ */
+export function checkReadmeSection(url: string, run: EmittedRun, droppedNames: Iterable<string> = []): string {
+  const gone = new Set(droppedNames);
+  const kept = run.tests.filter((t) => !gone.has(t.name));
+  const passed = kept.filter((t) => t.status === 'passed').length;
+  const lines = ['## Emitted-spec check', ''];
+  if (run.inconclusive) {
+    lines.push(`Before this framework was written, QA-Core ran it against ${url}, and the check was inconclusive: ${run.reason ?? 'no reason recorded'}.`);
+  } else {
+    lines.push(`Before this framework was written, QA-Core ran it once against ${url} (chromium, one worker): ${passed} of ${kept.length} test(s) passed.`);
+  }
+  const notPassed = kept.filter((t) => t.status !== 'passed');
+  if (notPassed.length > 0) {
+    lines.push('', 'Tests that did not pass:');
+    for (const t of notPassed) {
+      const first = (t.error ?? '').split('\n')[0]!.trim();
+      if (t.status === 'skipped') lines.push(`- "${t.name}": not run: ${first || 'skipped'}. It stays in the framework as generated.`);
+      else lines.push(`- "${t.name}": failed${t.attempts && t.attempts > 1 ? ' twice' : ''}; it stays in the framework and fails against the site as it is today.${first ? ` First error: ${first}` : ''}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+/** Append the check's README section to the framework, or say why it could not. */
+function appendCheckReadme(frameworkDir: string, url: string, run: EmittedRun, log: (line: string) => void, droppedNames: Iterable<string> = []): void {
+  const readme = path.join(frameworkDir, 'README.md');
+  if (!fs.existsSync(readme)) { log('WARNING: no README.md in the framework to carry the emitted-spec check result'); return; }
+  fs.writeFileSync(readme, `${fs.readFileSync(readme, 'utf8').replace(/\s*$/, '')}\n\n${checkReadmeSection(url, run, droppedNames)}\n`);
+}
+
 /** The README's first line when the framework was written without the check running it (invariant 79). */
 export function notRunReadmeLine(reason: string): string {
   return `This framework was NOT run before it was written: ${reason}.`;
@@ -490,7 +526,9 @@ export async function emittedCheckStage(opts: EmittedCheckOptions): Promise<Emit
     if (first.killed) {
       const reason = `timed out after ${Math.round(timeoutMs / 1000)}s; the framework is kept as generated`;
       log(`WARNING: Emitted-spec check inconclusive: ${reason}`);
-      return { ...none, report: withEmittedRun(report, { tests: first.tests, durationMs: Date.now() - t0, inconclusive: true, reason }) };
+      const run = { tests: first.tests, durationMs: Date.now() - t0, inconclusive: true, reason };
+      appendCheckReadme(frameworkDir, report.url, run, log);
+      return { ...none, report: withEmittedRun(report, run) };
     }
     if (first.tests.length === 0) {
       const reason = `Playwright produced no results (exit ${String(first.status)}): ${first.stderr || 'no output'}; the framework is kept as generated`;
@@ -507,7 +545,9 @@ export async function emittedCheckStage(opts: EmittedCheckOptions): Promise<Emit
         ? `every failure is a network error (${failedFirst[0]!.error?.split('\n')[0] ?? ''}); the site was unreachable during the run, the framework is kept as generated`
         : 'every test failed including the a11y check; the site is down or blocking automation, the framework is kept as generated';
       log(`WARNING: Emitted-spec check inconclusive: ${reason}`);
-      return { ...none, report: withEmittedRun(report, { tests: first.tests, durationMs: Date.now() - t0, inconclusive: true, reason }) };
+      const run = { tests: first.tests, durationMs: Date.now() - t0, inconclusive: true, reason };
+      appendCheckReadme(frameworkDir, report.url, run, log);
+      return { ...none, report: withEmittedRun(report, run) };
     }
 
     let tests = [...first.tests.map((t) => ({ ...t, attempts: 1 })), ...capSkipped()];
@@ -536,7 +576,9 @@ export async function emittedCheckStage(opts: EmittedCheckOptions): Promise<Emit
       if (second.killed) {
         const reason = `the retry timed out after ${Math.round(timeoutMs / 1000)}s in total; the framework is kept as generated`;
         log(`WARNING: Emitted-spec check inconclusive: ${reason}`);
-        return { ...none, report: withEmittedRun(report, { tests, durationMs: Date.now() - t0, inconclusive: true, reason }) };
+        const run = { tests, durationMs: Date.now() - t0, inconclusive: true, reason };
+        appendCheckReadme(frameworkDir, report.url, run, log);
+        return { ...none, report: withEmittedRun(report, run) };
       }
       const retried = new Map(second.tests.map((t) => [t.name, t]));
       tests = tests.map((t) => {
@@ -587,7 +629,10 @@ export async function emittedCheckStage(opts: EmittedCheckOptions): Promise<Emit
       log(`WARNING: Emitted-spec check: "${t.name}" failed twice but is not a scenario test (${/a11y/.test(t.file ?? '') ? 'the a11y check' : 'a setup test'}); it stays in the framework: ${t.error?.split('\n')[0] ?? ''}`);
     }
     withEmittedRun(report, { tests, durationMs });
-    if (dropped.length === 0) return { report, dropped: [] };
+    if (dropped.length === 0) {
+      appendCheckReadme(frameworkDir, report.url, { tests, durationMs }, log);
+      return { report, dropped: [] };
+    }
 
     // Drop the scenarios whose tests failed twice, rebuild the accounting the
     // same way the runtime did, and re-scaffold so the zip has no failing test.
@@ -602,6 +647,7 @@ export async function emittedCheckStage(opts: EmittedCheckOptions): Promise<Emit
     // The re-scaffold regenerates the data files from the report; the failed
     // cases (rule-derived ones included) come out again.
     pruneDatasetCases(frameworkDir, removedCases);
+    appendCheckReadme(frameworkDir, report.url, { tests, durationMs }, log, failedTwice.filter((t) => byTitle.has(t.name) || parseDataTestTitle(t.name)).map((t) => t.name));
     return { report, dropped };
   } finally {
     unlink();

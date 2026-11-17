@@ -37,6 +37,7 @@ import {
   type StopClassification,
 } from './checkpoint.js';
 import { installEvalShim } from './eval-shim.js';
+import { installMessageMemory } from './actual-state.js';
 import { newHistoryTracker, pruneFinishedScenarios, trackToolCall } from './history-prune.js';
 import { ASSERTION_DOCTRINE } from './doctrine.js';
 import { maskForDisk } from './credential-leak.js';
@@ -605,6 +606,7 @@ async function repairPass(args: {
     // Every context starts clean: no saved storage state (invariant 70).
     context = await browser.newContext();
     await installEvalShim(context);
+    await installMessageMemory(context);
     const page = await context.newPage();
     const maxSteps = stepBudgetFor(args.rework.length, 0);
     const ctx = createContext(page, maxSteps);
@@ -1322,6 +1324,7 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
     // playwright/.auth/user.json load is retired).
     context = await browser.newContext();
     await installEvalShim(context);
+    await installMessageMemory(context);
     const page: Page = await context.newPage();
 
     // A resumed run explores only what the checkpoint does not account for.

@@ -73,6 +73,16 @@ import { chosenOrTypedValueForPattern } from './all-items.js';
  *           a catalogue value into the locator itself. The steer: use the
  *           shortest distinguishing prefix of the name; never include a
  *           price.
+ *   RULE 10: No framework state class as a failure signal. A toHaveAttribute
+ *           on `class` whose literal or pattern matches a class a form
+ *           library sets on an invalid field while the page is built
+ *           (Angular's ng-invalid, ng-dirty, ng-touched and the rest,
+ *           FRAMEWORK_STATE_CLASSES) passes before any submit, so it can
+ *           never fail (run b4e41b D1: eight shipped negatives asserted
+ *           /(ng-invalid|is-invalid|error)/, true at page load). The steer:
+ *           the visible error element, aria-invalid="true", or a class the
+ *           page adds only after the submit. Also applied in-run at assert
+ *           time (tools.ts).
  *   RULE 5: Unused captures are stripped. A capture whose varName no
  *           assert_compare ever reads is dead weight the Critic flags every
  *           run; nothing can reference it later (assert_compare is the only
@@ -93,7 +103,7 @@ import { chosenOrTypedValueForPattern } from './all-items.js';
  */
 
 export interface GateViolation {
-  rule: 1 | 3 | 4 | 6 | 7 | 8 | 9;
+  rule: 1 | 3 | 4 | 6 | 7 | 8 | 9 | 10;
   stepIndex: number;
   detail: string;
 }
@@ -187,6 +197,12 @@ export function runGate(scenario: Scenario, opts: { knownNames?: Iterable<string
     if (step.kind === 'assert') {
       const r7 = catalogueLiteralReason(step.assertion, scenario.steps.slice(0, i), opts.knownNames);
       if (r7) violations.push({ rule: 7, stepIndex: i, detail: `step ${i + 1}: ${r7}` });
+    }
+
+    // RULE 10: a framework state class used as a failure signal.
+    if (step.kind === 'assert') {
+      const r10 = frameworkStateClassReason(step.assertion);
+      if (r10) violations.push({ rule: 10, stepIndex: i, detail: `step ${i + 1}: ${r10}` });
     }
 
     // RULE 9: a counter captured as an element count (see counterCountCaptureReason).
@@ -518,6 +534,7 @@ export function gateRuleLabel(rule: GateViolation['rule']): string {
     case 7: return 'RULE 7 (literal catalogue value)';
     case 8: return 'RULE 8 (price in locator name)';
     case 9: return 'RULE 9 (counter read as an element count)';
+    case 10: return 'RULE 10 (framework state class)';
   }
 }
 
@@ -531,7 +548,43 @@ export function gateBrokenReason(rule: GateViolation['rule']): string {
     case 7: return 'literal catalogue value asserted';
     case 8: return 'locator name carries a price';
     case 9: return 'counter captured as an element count';
+    case 10: return 'framework state class asserted as a failure signal';
   }
+}
+
+/* ─────────────────── RULE 10: framework state classes ─────────────────── */
+
+/**
+ * Classes a form library puts on a field from the moment the form is built,
+ * whatever the user did: Angular's form status classes. An empty required
+ * field carries ng-invalid at page load, so a class check that matches it
+ * passes before the submit (run b4e41b D1).
+ */
+export const FRAMEWORK_STATE_CLASSES = ['ng-invalid', 'ng-valid', 'ng-pending', 'ng-pristine', 'ng-dirty', 'ng-untouched', 'ng-touched', 'ng-submitted'] as const;
+
+/** The steer every RULE 10 rejection carries. */
+export const FRAMEWORK_STATE_CLASS_STEER = 'assert the visible error element (toBeVisible or its text), or aria-invalid="true", or a class the page adds only after the submit (for example a pattern /\\bis-invalid\\b/)';
+
+/**
+ * RULE 10 reason for an assertion, or null: a toHaveAttribute on `class`
+ * whose literal holds, or whose pattern matches, a framework state class.
+ * Judged on the recorded literal or pattern only, never on model text.
+ */
+export function frameworkStateClassReason(a: Assertion): string | null {
+  if (a.type !== 'toHaveAttribute') return null;
+  if (a.attribute.trim().toLowerCase() !== 'class') return null;
+  let hit: string | undefined;
+  if (a.pattern) {
+    let re: RegExp;
+    try { re = new RegExp(a.pattern); } catch { return null; }
+    hit = FRAMEWORK_STATE_CLASSES.find((c) => re.test(c));
+  } else {
+    const tokens = new Set(a.value.trim().split(/\s+/).filter(Boolean));
+    hit = FRAMEWORK_STATE_CLASSES.find((c) => tokens.has(c));
+  }
+  if (!hit) return null;
+  const shown = a.pattern ? `/${a.pattern}/` : JSON.stringify(a.value);
+  return `the class check ${shown} matches "${hit}", a class the form library sets while the page is built, before any submit, so the check passes whatever the page does; ${FRAMEWORK_STATE_CLASS_STEER}`;
 }
 
 /* ─────────────────── RULE 7: literal catalogue values ─────────────────── */
