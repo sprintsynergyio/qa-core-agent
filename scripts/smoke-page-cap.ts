@@ -134,7 +134,7 @@ const P2 = 'https://shop.example/contact';
   ];
   const api = await startFakeAnthropic({ planner: [planText(case1), planText(case2)], explorer, critic: [] });
   const map: RequirementsMap = {
-    features: [{ name: 'contact', description: 'the contact page', rules: ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9'].map((id) => ({ id, text: `The contact page keeps behavior ${id}.`, type: 'behavior' as const })) }],
+    features: [{ name: 'contact', description: 'the contact page', rules: ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9'].map((id) => ({ id, text: `The site keeps behavior ${id}.`, type: 'behavior' as const })) }],
     roles: [], truncated: false,
   };
   const prevBase = process.env.ANTHROPIC_BASE_URL;

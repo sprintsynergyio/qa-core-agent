@@ -8,6 +8,7 @@ import { citationMismatchReason, scenarioNameKey, REJECTION_RULE_RE } from './ru
 import type { ReachAction } from './discovery.js';
 import { samePage } from './planned-page.js';
 import { FORGOT_FLOW_RE } from './unique-data.js';
+import { pageScopeMismatchReason, type PlannedPageEvidence } from './rule-scope.js';
 
 /**
  * Planner — Step 1 of the multi-agent pipeline.
@@ -865,11 +866,16 @@ async function planFromSnapshot(
   // or a name that asserts the opposite of a cited rule, is dropped here;
   // a rule the drops left uncited gets ONE retry call of its own.
   const { kept: coherent, rejected: contradictionRejected } = rejectContradictions(fit, opts.requirements);
+  // The planned page, for the citation page check (D8a): the URL the
+  // scenarios test on (the revealed page for a page reached by action) and
+  // the snapshot's h1 headings.
+  const pageEvidence: PlannedPageEvidence = { url: opts.url, h1: snapshot.headings.filter((h) => h.tag === 'h1').map((h) => h.label ?? '') };
   let kept = coherent;
   let ruleRetries: RuleRetry[] = [];
   if (opts.requirements && contradictionRejected.length > 0) {
     const map = opts.requirements;
     const retry = await retryUncoveredRules({
+      pageScope: (rule, scenario) => pageScopeMismatchReason(rule.text, pageEvidence, scenario.name),
       dropped: contradictionRejected.map((r) => r.scenario),
       kept: coherent,
       map,
@@ -903,7 +909,7 @@ async function planFromSnapshot(
   }
   // A citation is a claim that the scenario verifies the rule; drop the ones
   // the category makes impossible, so coverage never counts them.
-  const { scenarios: cited, citationDrops } = applyCitationChecks(covered, opts.requirements);
+  const { scenarios: cited, citationDrops } = applyCitationChecks(covered, opts.requirements, pageEvidence);
   const costUsd = costOf(model, response.usage)
     + ruleRetries.reduce((n, r) => n + r.costUsd, 0);
 
@@ -1275,6 +1281,13 @@ export async function retryUncoveredRules(opts: {
   ask: (rule: RequirementRule, feature: RequirementFeature) => Promise<{ text: string; costUsd: number }>;
   /** A reason to reject the retried scenario, or null to accept it. */
   accept?: (s: PlannedScenario) => string | null;
+  /**
+   * Why the retried scenario cannot verify this rule on this page (the rule
+   * names a page or form the page does not carry and the scenario's name
+   * never goes there, D8a), or null. Judged on the returned scenario like
+   * the category check, so the rejection is recorded with its reason.
+   */
+  pageScope?: (rule: RequirementRule, scenario: PlannedScenario) => string | null;
 }): Promise<{ added: PlannedScenario[]; retries: RuleRetry[] }> {
   const cited = new Set(opts.kept.flatMap((s) => (s.ruleIds ?? []).map((id) => id.toUpperCase())));
   const uncovered: string[] = [];
@@ -1302,6 +1315,11 @@ export async function retryUncoveredRules(opts: {
     if (reason) { retries.push({ ruleId, costUsd, outcome: 'rejected', scenario: scenario.name, reason }); continue; }
     if (citationMismatchReason(scenario.category, o.rule.text)) {
       retries.push({ ruleId, costUsd, outcome: 'rejected', scenario: scenario.name, reason: `a ${scenario.category} scenario cannot verify ${ruleId}: ${citationMismatchReason(scenario.category, o.rule.text)}` });
+      continue;
+    }
+    const scope = opts.pageScope?.(o.rule, scenario) ?? null;
+    if (scope) {
+      retries.push({ ruleId, costUsd, outcome: 'rejected', scenario: scenario.name, reason: `this scenario cannot verify ${ruleId}: ${scope}` });
       continue;
     }
     added.push(scenario);
@@ -1835,6 +1853,7 @@ export function unreachableFeatureLine(f: { name: string; rules: number }): stri
 export function applyCitationChecks(
   scenarios: PlannedScenario[],
   map?: RequirementsMap,
+  page?: PlannedPageEvidence,
 ): { scenarios: PlannedScenario[]; citationDrops: Array<{ scenario: string; ruleId: string; reason: string }> } {
   if (!map) return { scenarios, citationDrops: [] };
   const ruleText = new Map<string, string>();
@@ -1845,7 +1864,9 @@ export function applyCitationChecks(
     const kept = s.ruleIds.filter((id) => {
       const text = ruleText.get(id.toUpperCase());
       if (text === undefined) return true;
-      const reason = citationMismatchReason(s.category, text);
+      // The category check, then the page check (D8a): a rule that names a
+      // page or form the planned page does not carry is not verified here.
+      const reason = citationMismatchReason(s.category, text) ?? (page ? pageScopeMismatchReason(text, page, s.name) : null);
       if (!reason) return true;
       citationDrops.push({ scenario: s.name, ruleId: id, reason });
       return false;
