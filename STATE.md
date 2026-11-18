@@ -887,13 +887,19 @@ using the qa-core-heal evaluation report as the template.
   (stop line, no state to resume), and the Critic and the Stabilizer (at
   once: nothing ships unreviewed or unverified) (invariant 79). Locked by
   smoke-page-filter (K) and smoke-billing-stops.
-- D8a (run 8): OPEN, brief first. Rule coverage credits R1
-  and R12 to tests that do not exercise them (the citation check reads
-  the category only). Run 9: R1 by a category-page sort, R12 partly by
-  login-form tests, R14 by a test rejected for its message length.
+- D8a (run 8): ADDRESSED (PR #65, engine/d8a-rule-scope). Rule coverage
+  credited R1 and R12 to tests that do not exercise them (the citation
+  check read the category only). Run 9: R1 by a category-page sort, R12
+  partly by login-form tests. Now a rule that names a page or form (the
+  home page, the registration form) is credited only to a scenario on a
+  page that carries it by path or h1, or whose name goes there (invariant
+  82); applied to run 9's plan, R1 reads uncovered and R12 keeps only
+  the registration tests.
+  Not in this fix: R14 credited to a test the site rejected for its
+  message length is the other-fields-valid doctrine (D4, prompt only).
 - Run 9 (b4e41b) items, ranked. All in docs/audit/run-b4e41b-diagnosis.md,
   section 3.
-- D1 (run 9): ADDRESSED (PR #64, engine/run9-fixes, not merged). A class
+- D1 (run 9): ADDRESSED (PR #64, merged Nov 17). A class
   assertion /(ng-invalid|is-invalid|error)/ on a form field passes before
   submit (Angular sets ng-invalid at form build) and was accepted as a
   user-visible error; eight shipped negatives use it, two forgot-password
@@ -909,7 +915,7 @@ using the qa-core-heal evaluation report as the template.
   Remaining options: (b) replay defers a wrong-password scenario to the
   emitted check, which becomes its independent run (three executions);
   (c) keep today's behavior, now stated in the README (invariant 81).
-- D3 (run 9): ADDRESSED (PR #64, engine/run9-fixes, not merged). A happy
+- D3 (run 9): ADDRESSED (PR #64, merged Nov 17). A happy
   reset planned with a generated, unregistered email (impossible on a
   site that validates existence); a 3 s alert missed by
   captureActualState; and a first "Could not resolve element" counted
@@ -918,15 +924,15 @@ using the qa-core-heal evaluation report as the template.
   plan time, a message shown then hidden reaches the reading, and a
   never-found element counts toward the recovery cap only, keyed by its
   hints (invariant 81). Locked by smoke-run9-fixes.
-- D4 (run 9): ADDRESSED in the prompts only (PR #64, engine/run9-fixes,
-  not merged). A negative's other fields are not checked valid: the R14
+- D4 (run 9): ADDRESSED in the prompts only (PR #64, merged
+  Nov 17). A negative's other fields are not checked valid: the R14
   test's message is under the site's 50-character minimum. Doctrine rule
   3 now tells the Explorer and the Critic to reuse the happy scenario's
   values for every other field; no code checks it.
 - D5 (run 9): OPEN. A role plus label that missed fell to
   getByRole('button').first() and clicked a Testing Guide button; label
   is not a locating hint (invariant 60).
-- D6 (run 9): ADDRESSED (PR #64, engine/run9-fixes, not merged). The
+- D6 (run 9): ADDRESSED (PR #64, merged Nov 17). The
   a11y spec ships red and the README said nothing about the emitted
   check, the red test or the unrun test. Now the README ends with an
   "Emitted-spec check" section naming every test that did not pass and
