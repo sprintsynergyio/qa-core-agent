@@ -563,6 +563,35 @@ second attempt counts as run 10; re-seed after the run, whatever line 6
 shows. After the grade, engine work stops for launch; misses go to the
 post-launch backlog.
 
+Run 10 verdict: bar missed on lines 1, 4 and 6, met on lines 2, 3, 5, 7
+and 8. Run 20261118T083203Z-ceeaf2, $5.87 (under the ceiling), in two
+processes: the first stopped in the Explorer on API credit exhaustion after
+17 scenarios ($3.78); the resume (advisor decision: it counts, the stop was
+billing) explored the last 3 and ran every later stage. `cost.models`
+matched part b. Diagnosis: docs/audit/run-ceeaf2-diagnosis.md.
+
+1. Missed: 7 reworks of 20 on the first pass, 35.0 percent (run 9 22.2).
+2. Met: every feature by a path segment; the cart probe revealed /checkout.
+3. Met by the wording: all 16 shipped tests passed the emitted check. The
+   happy login and the wrong-password test were dropped from the framework
+   because the run itself had locked the account (D1). Honest measure 16
+   of 20.
+4. Missed: 3 (names with no name read; a matching price on a listing with
+   no price; a malformed reset email proven by a marker typing sets).
+5. Met: the happy login passed replay.
+6. Missed: the account was locked. The wrong-password counter read 0
+   because the scenario's name had no "login" (D1); 7 real submits against
+   a cap of 3; stability re-ran it and the post-run check never ran.
+7. Met: no findings.
+8. Met: 0 rules credited that no test exercises (R3, R8, R11 to R14 fully;
+   R4, R5, R7, R9 partly).
+
+Engine work stops for launch, with one exception: a $0 PR for D1 (count
+wrong-password submits by the steps, check the account after every run
+with credentials), D2 (the README names a test the framework no longer
+holds) and D5 (the resume hint drops the ceiling and stage flags), proven
+offline with run 10's trace. No run 11 before launch.
+
 ### Opus 5.5 comparison (planned; runs only if the owner approves)
 
 The run 7 command with only QA_CORE_EXPLORER_MODEL=claude-opus-5-5 set
@@ -691,10 +720,11 @@ ceiling. A new baseline, not compared line for line with the table above.
 |---|---|---|---|---|---|---|---|---|---|
 | 8 71d739 | Nov 2 | #53 to #57 | 10 (8 crawl, 2 by action), 9 planned | 20 | 15 | 10 | $6.20 | stopped at the explorer's share, framework written, emitted check not run, test account locked | docs/audit/run-71d739-diagnosis.md |
 | 9 b4e41b | Nov 17 | #59 to #62 | 9 (7 crawl, 2 by action), 9 planned | 20 | 18 | 18 | $4.73 | completed; emitted check 17 of 18 shipped (wrong-password test not run); account still signs in | docs/audit/run-b4e41b-diagnosis.md |
+| 10 ceeaf2 | Nov 18 | #64 to #66 | 9 (7 crawl, 2 by action), 9 planned | 20 | 20 | 16 | $5.87 | completed after a billing stop and a resume; emitted check 16 of 16 shipped; test account locked by the run (counter read 0) | docs/audit/run-ceeaf2-diagnosis.md |
 
 Attempt 1 (20261102T125106Z-d2c5df) stopped on API credit exhaustion at
 its first Planner call, $0 spent, not graded. Live spend on the local
-Toolshop to date: $10.93 over two graded runs.
+Toolshop to date: $16.80 over three graded runs.
 
 ## The audit plan
 
@@ -1222,6 +1252,25 @@ using the qa-core-heal evaluation report as the template.
   before any stage uses it.
 - Exemption for signed-out gated-URL negatives (from PR #46): not planned
   today; revisit after the confirmation run if a client needs it.
+
+### Run 10 (ceeaf2) defects, docs/audit/run-ceeaf2-diagnosis.md
+
+- D1 (run 10): OPEN, pre-launch fix PR. `wrongPasswordSubmits` returns 0
+  unless the name says log in or sign in or the feature is `login`; "rejected
+  a wrong password" under `account` counted 0, so stability re-ran it, the
+  post-run check never ran, and 7 submits locked the account.
+- D2 (run 10): OPEN, pre-launch fix PR. The README's emitted-check section
+  names `authenticate` as staying in the framework after the re-scaffold
+  removed it, and counts it in "16 of 18".
+- D3 (run 10): post-launch. Three names claim more than the recording
+  proves; the Critic passed them.
+- D4 (run 10): post-launch. A role-alert lookup with an "email" intent
+  resolved to the email input through the intent's smart css; the Critic
+  rejected it.
+- D5 (run 10): OPEN, pre-launch fix PR. The resume hint omits --ceiling and
+  the replay and stability flags, which a checkpoint does not restore.
+- D6 (run 10): recorded. First-pass rework 35.0 percent, five of seven
+  about selector or recording tidiness.
 
 ## Then: go to market
 
