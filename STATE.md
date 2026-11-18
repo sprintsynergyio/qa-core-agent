@@ -473,7 +473,95 @@ Diagnosis: docs/audit/run-b4e41b-diagnosis.md.
 What moved: Explorer $0.2246 per recorded scenario (run 8 $0.3413),
 main-pass context capped near 50K tokens (run 8 79K), no scenario left
 unexplored, the account still signs in. Next: one $0 fix PR for D1 to D4
-and D6, then run 10 with the same bar.
+and D6, then run 10 with the same bar. Done: PR #64 (D1, D3, D4, D6) and
+PR #65 (D8a) merged Nov 17 and 18; run 10 bar below.
+
+### Run 10 bar (written Nov 18, before the run)
+
+Run 10 is the last engine run before launch (advisor decision Nov 18, made
+from what is on file after two asks went unanswered; the owner may
+override). Whatever it scores, the launch material uses its numbers as
+recorded, misses included. Fixes merged since run 9: PR #64 (D1, D3, D4
+prompt only, D6) and PR #65 (D8a). D2 is option (c) (advisor decision Nov
+18, same basis): the wrong-password test may ship unrun by the emitted
+check when the cap is spent, and the README says so; option (b) is
+post-launch.
+
+a. Benchmark. Run 9's, unchanged: /Users/osman/Projects/toolshop-local at
+commit ae7caecb, SPRINT=sprint5, the local robots.txt edit of run 8 part a,
+the seeded customer2 account as QA_CORE_TEST_USER_LOCALHOST /
+QA_CORE_TEST_PASS_LOCALHOST in .env (values in .env only). Compared line
+for line with run 9.
+
+b. Command. Run 9's, unchanged:
+
+```bash
+cd /Users/osman/Projects/Openclaw/qa-core-agent && npm run explore -- http://localhost:4200/ --srs output/practicesoftwaretesting-com/20260918T163858Z-5e4394/toolshop-srs.md --ceiling 6 --lang ts --pom --replay --stability 3 --stabilize --stabilize-attempts 3
+```
+
+Models and map as in run 9 part b: default models, `cost.models` reading
+claude-haiku-4-5 for the requirements map, page filter, feature parser
+and Planner, claude-opus-4-7 for the Explorer, claude-sonnet-4-6 for the
+Critic and the Stabilizer (any other value voids the run as run 10); the
+console prints "requirements map: reused" for
+output/localhost/srs/ac278ddf17eb/requirements-map.json;
+`QA_CORE_WRONG_PASSWORD_CAP` is not set (cap 3).
+
+c. Preconditions. Run 9 part c, unchanged, except main is at the PR #65
+merge (af59412) or later. Any one failing means no run.
+
+d. The bar. Graded; every file is in the run 10 folder under
+output/localhost/.
+1. Rework rate under 35 percent on the first Critic pass, measured as run
+   9 line 1. Run 9: 22.2 percent.
+2. Every SRS feature gets a page, as run 9 line 2. Run 9: met.
+3. The emitted-spec check ran and every shipped test it ran passed:
+   `emittedRun.inconclusive` is not true, `emittedRun.notRun` is absent,
+   and every `emittedRun.tests` entry for a shipped test has status
+   `passed`, except a test recorded `skipped` with "would exceed the
+   wrong-password cap", which is allowed only when its replay verdict
+   passed and the README's "Emitted-spec check" section names it with
+   that reason (D2 option c). The a11y spec is reported, not graded: its
+   failures are the site's accessibility violations, and the README
+   section must name it. Honest measure (passed over every
+   `emittedRun.tests` entry) reported beside it. Run 9: missed (the
+   wrong-password test was not run and no README said so).
+4. Zero shipped tests whose name claims more than the recording proves,
+   graded by hand as run 9 line 4, with run 9's stricter reading: a class
+   check that already holds before the submit proves nothing (RULE 10),
+   and a negative must change only the field under test. Run 9: 6.
+5. The happy login survives replay, as run 9 line 5. Run 9: met.
+6. The test account still signs in after the run, as run 9 line 6. Run 9:
+   met.
+7. Every product finding is real, checked by hand at $0 against the local
+   Toolshop as run 9 line 7. Locator findings are reported, not graded.
+   Run 9: missed (one agent mistake).
+8. Zero rules the report counts as covered that no shipped test
+   exercises. Each rule in `ruleCoverage.covered` is read by hand against
+   the shipped tests that cite it: fully, partly or not; a "not" is a
+   miss, a "partly" is reported. Graded for the first time, because PR
+   #65 removed the cause. Run 9: 2 not (R1, R12 by the login tests), 5
+   partly.
+
+e. Measured and recorded, not graded.
+- Everything in run 9 part e, read the same way.
+- RULE 10 refusals at the tool and at the end gate (the `RULE 10
+  (framework state class)` lines in events.jsonl), and whether any shipped
+  negative still asserts a class pattern.
+- Whether a happy forgot-password scenario was planned (it should be
+  dropped at plan time as a contradiction) and what reset scenarios
+  shipped.
+- `Dropped rule citation` lines in the console, each with its rule and
+  reason.
+- Findings whose messages end "(shown, then hidden)".
+- The README's "Emitted-spec check" section, verbatim.
+
+f. Rules for the run. Run 9 part f, unchanged: one run, a missed bar is
+recorded as missed and never re-run; a stop before the Critic is not
+graded, its cause is diagnosed at $0, and the owner decides whether a
+second attempt counts as run 10; re-seed after the run, whatever line 6
+shows. After the grade, engine work stops for launch; misses go to the
+post-launch backlog.
 
 ### Opus 5.5 comparison (planned; runs only if the owner approves)
 
@@ -887,7 +975,7 @@ using the qa-core-heal evaluation report as the template.
   (stop line, no state to resume), and the Critic and the Stabilizer (at
   once: nothing ships unreviewed or unverified) (invariant 79). Locked by
   smoke-page-filter (K) and smoke-billing-stops.
-- D8a (run 8): ADDRESSED (PR #65, engine/d8a-rule-scope). Rule coverage
+- D8a (run 8): ADDRESSED (PR #65, merged Nov 18). Rule coverage
   credited R1 and R12 to tests that do not exercise them (the citation
   check read the category only). Run 9: R1 by a category-page sort, R12
   partly by login-form tests. Now a rule that names a page or form (the
@@ -906,7 +994,9 @@ using the qa-core-heal evaluation report as the template.
   tests cannot fail. Now gate RULE 10 refuses a class check matching a
   framework state class at the tool and the gate, and doctrine rule 3
   says so (invariant 81). Locked by smoke-run9-fixes.
-- D2 (run 9): OPEN, owner decision. The wrong-password cap of 3 is spent
+- D2 (run 9): DECIDED option (c) for launch (advisor decision Nov 18,
+  owner may override; run 10 bar line 3 grades it), option (b) post-launch.
+  The wrong-password cap of 3 is spent
   by explorer, repair and replay before the emitted check, so the check
   can never run a repaired wrong-password test. Reserving one submit for
   the check (option a) does not fit: a repaired wrong-password scenario
