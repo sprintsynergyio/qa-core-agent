@@ -35,6 +35,7 @@ import {
   type Checkpoint,
   type CheckpointPhase,
   type StopClassification,
+  type CheckpointStages,
 } from './checkpoint.js';
 import { installEvalShim } from './eval-shim.js';
 import { installMessageMemory } from './actual-state.js';
@@ -244,7 +245,7 @@ export interface ExploreOptions {
    */
   resume?: Checkpoint;
   /** CLI-level flags recorded into the checkpoint so --resume can restore them. */
-  checkpointFlags?: { pom?: boolean; srsPath?: string };
+  checkpointFlags?: { pom?: boolean; srsPath?: string; env?: Record<string, string>; stages?: CheckpointStages };
   /** --login-url: the login preflight tries this page first (invariant 70). */
   loginUrl?: string;
   /**
@@ -916,6 +917,8 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
       ...(opts.checkpointFlags?.srsPath ? { srs: opts.checkpointFlags.srsPath } : {}),
       discover: Boolean(opts.discover),
       urls: opts.urls ?? [],
+      ...(opts.checkpointFlags?.env ? { env: opts.checkpointFlags.env } : {}),
+      ...(opts.checkpointFlags?.stages ? { stages: opts.checkpointFlags.stages } : {}),
     },
     ...(cpState.discovery ? { discovery: cpState.discovery } : {}),
     ...(opts.requirements ? { requirementsMap: opts.requirements } : {}),

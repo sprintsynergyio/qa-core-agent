@@ -1255,11 +1255,11 @@ using the qa-core-heal evaluation report as the template.
 
 ### Run 10 (ceeaf2) defects, docs/audit/run-ceeaf2-diagnosis.md
 
-- D1 (run 10): OPEN, pre-launch fix PR. `wrongPasswordSubmits` returns 0
+- D1 (run 10): ADDRESSED (PR #68, engine/run10-fixes). `wrongPasswordSubmits` returned 0
   unless the name says log in or sign in or the feature is `login`; "rejected
   a wrong password" under `account` counted 0, so stability re-ran it, the
   post-run check never ran, and 7 submits locked the account.
-- D2 (run 10): OPEN, pre-launch fix PR. The README's emitted-check section
+- D2 (run 10): ADDRESSED (PR #68). The README's emitted-check section
   names `authenticate` as staying in the framework after the re-scaffold
   removed it, and counts it in "16 of 18".
 - D3 (run 10): post-launch. Three names claim more than the recording
@@ -1267,8 +1267,10 @@ using the qa-core-heal evaluation report as the template.
 - D4 (run 10): post-launch. A role-alert lookup with an "email" intent
   resolved to the email input through the intent's smart css; the Critic
   rejected it.
-- D5 (run 10): OPEN, pre-launch fix PR. The resume hint omits --ceiling and
-  the replay and stability flags, which a checkpoint does not restore.
+- D5 (run 10): ADDRESSED (PR #68). The resume hint omitted --ceiling (and
+  any non-default stage flag), which a checkpoint did not restore; replay,
+  stability and stabilize are defaults, so the diagnosis's "no replay or
+  stability" was wrong (corrected). The checkpoint now records both.
 - D6 (run 10): recorded. First-pass rework 35.0 percent, five of seven
   about selector or recording tidiness.
 

@@ -67,6 +67,12 @@ export interface ExploreRequest {
   /** True when --pom / --no-pom / --inline was passed explicitly. */
   pomProvided: boolean;
   /**
+   * True when a replay, stability, stabilize or emitted-check flag was given
+   * on this request. A resume restores the original run's stage flags unless
+   * the resume command gave its own (run ceeaf2 D5).
+   */
+  stagesProvided?: boolean;
+  /**
    * Per-run overrides of the env-driven settings, keyed by the SAME env
    * names the runtime reads (QA_CORE_COST_CEILING, ...). Only names in
    * RUN_ENV_SETTINGS are accepted; anything else is rejected at parse time.
@@ -236,22 +242,22 @@ export function parseExploreTokens(tokens: string[]): ParseRequestResult {
       case '--no-pom': case '--inline': req.pom = false; req.pomProvided = true; break;
       case '--pom': req.pom = true; req.pomProvided = true; break;
       case '--resume': { const v = need(a, i); if (!v) return { ok: false, error: '--resume expects a checkpoint.json path' }; req.resume = v; i++; break; }
-      case '--no-replay': req.replay = false; break;
-      case '--replay': req.replay = true; break;
-      case '--no-stability': req.stability = false; break;
+      case '--no-replay': req.replay = false; req.stagesProvided = true; break;
+      case '--replay': req.replay = true; req.stagesProvided = true; break;
+      case '--no-stability': req.stability = false; req.stagesProvided = true; break;
       case '--stability': {
         const n = Number(need(a, i));
         if (!Number.isInteger(n) || n < 1) return { ok: false, error: `--stability expects a positive integer (got "${tokens[i + 1] ?? ''}")` };
-        req.stabilityIterations = n; i++; break;
+        req.stabilityIterations = n; req.stagesProvided = true; i++; break;
       }
-      case '--no-stabilize': req.stabilize = false; break;
-      case '--stabilize': req.stabilize = true; break;
-      case '--no-emitted-check': req.emittedCheck = false; break;
-      case '--emitted-check': req.emittedCheck = true; break;
+      case '--no-stabilize': req.stabilize = false; req.stagesProvided = true; break;
+      case '--stabilize': req.stabilize = true; req.stagesProvided = true; break;
+      case '--no-emitted-check': req.emittedCheck = false; req.stagesProvided = true; break;
+      case '--emitted-check': req.emittedCheck = true; req.stagesProvided = true; break;
       case '--stabilize-attempts': {
         const n = Number(need(a, i));
         if (!Number.isInteger(n) || n < 1) return { ok: false, error: `--stabilize-attempts expects a positive integer (got "${tokens[i + 1] ?? ''}")` };
-        req.stabilizeAttempts = n; i++; break;
+        req.stabilizeAttempts = n; req.stagesProvided = true; i++; break;
       }
       case '--features': {
         const v = need(a, i);
@@ -324,9 +330,38 @@ export function resumeConflicts(req: ExploreRequest, cp: Checkpoint, normalizedU
   return out;
 }
 
+/**
+ * The per-run settings a resume runs under: the original run's (recorded on
+ * the checkpoint, allowlisted names and valid values only) with this
+ * request's own on top, so `--resume <path>` alone keeps the run's ceiling
+ * (run ceeaf2 D5: the hint resumed under the $2.00 default with $3.78 spent)
+ * and `--resume <path> --ceiling 8` still tops it up.
+ */
+export function checkpointEnvFor(req: Pick<ExploreRequest, 'env'>, cpEnv?: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(cpEnv ?? {})) {
+    if (typeof v === 'string' && validateEnvOverride(k, v) === null) out[k] = v;
+  }
+  return { ...out, ...req.env };
+}
+
+/** The names a resume restored from the checkpoint (not given on the resume command), for the console line. */
+export function restoredEnvNames(req: Pick<ExploreRequest, 'env'>, cpEnv?: Record<string, string>): string[] {
+  return Object.keys(checkpointEnvFor({ env: {} }, cpEnv)).filter((k) => !(k in req.env));
+}
+
 /** Restore the flags a checkpoint recorded onto the request (after conflicts pass). */
 export function applyCheckpointFlags(req: ExploreRequest, cp: Checkpoint): ExploreRequest {
-  return { ...req, url: cp.url, lang: cp.flags.lang, pom: cp.flags.pom, features: [...cp.flags.features] };
+  const stages = !req.stagesProvided && cp.flags.stages ? cp.flags.stages : undefined;
+  return {
+    ...req,
+    url: cp.url, lang: cp.flags.lang, pom: cp.flags.pom, features: [...cp.flags.features],
+    env: checkpointEnvFor(req, cp.flags.env),
+    ...(stages ? {
+      replay: stages.replay, stability: stages.stability, stabilityIterations: stages.stabilityIterations,
+      stabilize: stages.stabilize, stabilizeAttempts: stages.stabilizeAttempts, emittedCheck: stages.emittedCheck,
+    } : {}),
+  };
 }
 
 export interface BuildExploreContext {
@@ -384,6 +419,11 @@ export function buildExploreOptions(req: ExploreRequest, ctx: BuildExploreContex
     checkpointFlags: {
       pom: req.pom,
       ...(req.srs ? { srsPath: req.srs } : cp?.flags.srs ? { srsPath: cp.flags.srs } : {}),
+      env: { ...req.env },
+      stages: {
+        replay: req.replay, stability: req.stability, stabilityIterations: req.stabilityIterations,
+        stabilize: req.stabilize, stabilizeAttempts: req.stabilizeAttempts, emittedCheck: req.emittedCheck,
+      },
     },
   };
 }

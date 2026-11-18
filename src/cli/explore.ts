@@ -16,7 +16,7 @@ import { deleteCheckpoint, loadCheckpoint, markCheckpointPhase, resumeHintForRun
 import { emittedCheckMeta, emittedCheckStage, writeReportFiles } from '../agent/emitted-check.js';
 import type { PlannedScenario } from '../agent/planner.js';
 import {
-  applyCheckpointFlags, buildExploreOptions, outDirForRequest, parseExploreArgv, resumeConflicts, slugUrl, unknownModelRefusal,
+  applyCheckpointFlags, buildExploreOptions, checkpointEnvFor, restoredEnvNames, outDirForRequest, parseExploreArgv, resumeConflicts, slugUrl, unknownModelRefusal,
   type ExploreRequest,
 } from '../agent/explore-request.js';
 import os from 'node:os';
@@ -120,6 +120,19 @@ async function main(): Promise<void> {
   let args = parseArgs(process.argv);
   const base = path.join(process.cwd(), 'output');
 
+  // A resume runs under the original run's per-run settings (its ceiling)
+  // unless this command gives its own (run ceeaf2 D5). Read before the env
+  // is applied, so the model refusal below sees the same settings; a bad
+  // file is reported by the load further down.
+  let restoredEnv: string[] = [];
+  if (args.resume) {
+    try {
+      const peek = loadCheckpoint(args.resume);
+      restoredEnv = restoredEnvNames(args, peek.flags.env).map((k) => `${k}=${peek.flags.env![k]}`);
+      args = { ...args, env: checkpointEnvFor(args, peek.flags.env) };
+    } catch { /* reported by the resume load below */ }
+  }
+
   // Per-run setting overrides (--ceiling, --planner-model, --env ...) are
   // applied through the same env names the runtime reads.
   for (const [name, value] of Object.entries(args.env)) process.env[name] = value;
@@ -176,6 +189,7 @@ async function main(): Promise<void> {
     console.log(`▸ Resuming ${url}`);
     console.log(`  checkpoint: ${path.relative(process.cwd(), path.resolve(args.resume!))}`);
     console.log(`  ${resumeCp.completedScenarios.length} of ${resumeCp.plan.length} scenario(s) already completed`);
+    if (restoredEnv.length > 0) console.log(`  settings restored from the checkpoint: ${restoredEnv.join(', ')}`);
   } else if (args.fromPlan) {
     const parsed = readPlanFile(args.fromPlan);
     url = parsed.url;
