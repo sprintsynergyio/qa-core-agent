@@ -328,11 +328,25 @@ export function checkReadmeSection(url: string, run: EmittedRun, droppedNames: I
   return lines.join('\n');
 }
 
-/** Append the check's README section to the framework, or say why it could not. */
-function appendCheckReadme(frameworkDir: string, url: string, run: EmittedRun, log: (line: string) => void, droppedNames: Iterable<string> = []): void {
+/**
+ * The tests of the run whose spec file the framework no longer holds. A
+ * re-scaffold without the happy login removes the auth setup file too, so
+ * its `authenticate` test is not in the framework (run ceeaf2 D2: the
+ * README said it "stays in the framework"). Read from the files on disk,
+ * never from the test name. Exported for the smoke.
+ */
+export function testsWithoutFile(frameworkDir: string, run: EmittedRun): string[] {
+  return run.tests
+    .filter((t) => t.file !== undefined && t.file !== '' && !fs.existsSync(path.join(frameworkDir, 'tests', t.file)))
+    .map((t) => t.name);
+}
+
+/** Append the check's README section to the framework, or say why it could not. Exported for the smoke. */
+export function appendCheckReadme(frameworkDir: string, url: string, run: EmittedRun, log: (line: string) => void, droppedNames: Iterable<string> = []): void {
   const readme = path.join(frameworkDir, 'README.md');
   if (!fs.existsSync(readme)) { log('WARNING: no README.md in the framework to carry the emitted-spec check result'); return; }
-  fs.writeFileSync(readme, `${fs.readFileSync(readme, 'utf8').replace(/\s*$/, '')}\n\n${checkReadmeSection(url, run, droppedNames)}\n`);
+  const gone = [...droppedNames, ...testsWithoutFile(frameworkDir, run)];
+  fs.writeFileSync(readme, `${fs.readFileSync(readme, 'utf8').replace(/\s*$/, '')}\n\n${checkReadmeSection(url, run, gone)}\n`);
 }
 
 /** The README's first line when the framework was written without the check running it (invariant 79). */

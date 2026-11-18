@@ -108,7 +108,8 @@ check('C2. QA_CORE_WRONG_PASSWORD_CAP still overrides the default', wrongPasswor
 
 /* ─── the scripted model ─────────────────────────────────────────────────── */
 const HAPPY = 'logged in with valid credentials';
-const WRONG = 'rejected a wrong password and stayed on the login page';
+// Run 10's exact name (ceeaf2 D1): no "login" in it, so a name-keyed counter read 0.
+const WRONG = 'rejected a wrong password';
 const DASH = '—';
 const plannerScript = [`<plan>\n1. [account][happy] ${HAPPY} ${DASH} fails if sign-in breaks\n2. [account][negative] ${WRONG} ${DASH} fails if a wrong password is accepted\n</plan>`];
 const explorerScript: FakeAnthropicScript['explorer'] = [

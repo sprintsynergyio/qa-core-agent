@@ -45,7 +45,7 @@ export const exploreArgs = {
 };
 
 export const resumeArgs = {
-  checkpointPath: z.string().describe('Path to the checkpoint.json a stopped run left behind, relative to the project root or absolute (CLI: --resume <path>). URL, language, features, page set and requirements map are restored from it.'),
+  checkpointPath: z.string().describe('Path to the checkpoint.json a stopped run left behind, relative to the project root or absolute (CLI: --resume <path>). URL, language, features, page set, requirements map, the run\'s per-run settings (its ceiling) and its stage flags are restored from it; a setting given here wins.'),
   ...settingArgs,
 };
 
@@ -134,6 +134,8 @@ export function exploreRequestFromToolArgs(a: ExploreToolArgs, srsPathFromText?:
   req.stabilize = a.stabilize ?? true;
   req.stabilizeAttempts = a.stabilizeAttempts ?? 3;
   req.emittedCheck = a.emittedCheck ?? true;
+  // Same as the CLI parser: a stage argument given here is this request's own.
+  if ([a.replay, a.stability, a.stabilityIterations, a.stabilize, a.stabilizeAttempts, a.emittedCheck].some((v) => v !== undefined)) req.stagesProvided = true;
   if (a.loginUrl) req.loginUrl = a.loginUrl;
   req.env = envFromSettings(a);
   return req;

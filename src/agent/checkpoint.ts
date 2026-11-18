@@ -62,6 +62,32 @@ export interface CheckpointSpend {
   requirements?: number;
 }
 
+export interface CheckpointStages {
+  replay: boolean;
+  stability: boolean;
+  stabilityIterations: number;
+  stabilize: boolean;
+  stabilizeAttempts: number;
+  emittedCheck: boolean;
+}
+
+function readStages(v: unknown): CheckpointStages | undefined {
+  if (typeof v !== 'object' || v === null) return undefined;
+  const o = v as Record<string, unknown>;
+  const bool = (k: string): boolean | undefined => (typeof o[k] === 'boolean' ? (o[k] as boolean) : undefined);
+  const int = (k: string): number | undefined => (Number.isInteger(o[k]) && (o[k] as number) > 0 ? (o[k] as number) : undefined);
+  const s = { replay: bool('replay'), stability: bool('stability'), stabilityIterations: int('stabilityIterations'), stabilize: bool('stabilize'), stabilizeAttempts: int('stabilizeAttempts'), emittedCheck: bool('emittedCheck') };
+  if (Object.values(s).some((x) => x === undefined)) return undefined;
+  return s as CheckpointStages;
+}
+
+function readEnv(v: unknown): Record<string, string> | undefined {
+  if (typeof v !== 'object' || v === null) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) if (typeof x === 'string') out[k] = x;
+  return out;
+}
+
 export interface Checkpoint {
   version: typeof CHECKPOINT_VERSION;
   url: string;
@@ -72,6 +98,10 @@ export interface Checkpoint {
     srs?: string;
     discover: boolean;
     urls: string[];
+    /** The run's per-run settings (RUN_ENV_SETTINGS names, such as QA_CORE_COST_CEILING), restored on resume (run ceeaf2 D5). Absent on older checkpoints. */
+    env?: Record<string, string>;
+    /** The run's stage flags, restored on resume unless the resume command gives its own. Absent on older checkpoints. */
+    stages?: CheckpointStages;
   };
   discovery?: RunReport['discovery'];
   requirementsMap?: RequirementsMap;
@@ -173,6 +203,8 @@ export function loadCheckpoint(file: string): Checkpoint {
       ...(cp.flags.srs ? { srs: cp.flags.srs } : {}),
       discover: cp.flags.discover === true,
       urls: Array.isArray(cp.flags.urls) ? cp.flags.urls : [],
+      ...(readEnv(cp.flags.env) ? { env: readEnv(cp.flags.env)! } : {}),
+      ...(readStages(cp.flags.stages) ? { stages: readStages(cp.flags.stages)! } : {}),
     },
     ...(cp.discovery ? { discovery: cp.discovery } : {}),
     ...(cp.requirementsMap ? { requirementsMap: cp.requirementsMap } : {}),

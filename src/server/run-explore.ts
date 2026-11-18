@@ -13,7 +13,7 @@ import { costLine, totalCost } from '../agent/cost-total.js';
 import { deleteCheckpoint, loadCheckpoint, markCheckpointPhase, resumeHintForRun, type Checkpoint } from '../agent/checkpoint.js';
 import { emittedCheckMeta, emittedCheckStage, writeReportFiles } from '../agent/emitted-check.js';
 import {
-  applyCheckpointFlags, buildExploreOptions, outDirForRequest, resumeConflicts, unknownModelRefusal,
+  applyCheckpointFlags, buildExploreOptions, checkpointEnvFor, restoredEnvNames, outDirForRequest, resumeConflicts, unknownModelRefusal,
   type ExploreRequest,
 } from '../agent/explore-request.js';
 import { finalizeRunDir, newRunId, projectSlug, writeRunMeta } from '../agent/output-layout.js';
@@ -227,12 +227,14 @@ export async function prepareExploreRun(input: Omit<RunExploreInput, 'onEvent' |
     } catch (err) {
       throw new Error(`Cannot resume: ${resumeCp.url} is not reachable (${(err as Error).message}). Check the network and try again.`);
     }
+    const restored = restoredEnvNames(req, resumeCp.flags.env).map((k) => `${k}=${resumeCp!.flags.env![k]}`);
     req = applyCheckpointFlags(req, resumeCp);
     url = resumeCp.url;
     outDir = path.dirname(cpFile);
     notes.push(`▸ Resuming ${url}`);
     notes.push(`  checkpoint: ${rel(root, cpFile)}`);
     notes.push(`  ${resumeCp.completedScenarios.length} of ${resumeCp.plan.length} scenario(s) already completed`);
+    if (restored.length > 0) notes.push(`  settings restored from the checkpoint: ${restored.join(', ')}`);
   } else {
     if (!req.url) throw new Error('An entry URL is required.');
     const urlCheck = normalizeAndValidateUrl(req.url);
@@ -305,7 +307,14 @@ export async function prepareExploreRun(input: Omit<RunExploreInput, 'onEvent' |
 export async function runExploreRequest(input: RunExploreInput): Promise<RunExploreOutcome> {
   const root = input.projectRoot;
   const note = input.onNote ?? (() => {});
-  return withEnvOverrides(input.request.env, async () => {
+  // A resume runs under the original run's per-run settings unless the
+  // request gives its own (run ceeaf2 D5); a bad file is reported by the
+  // resume load in prepareExploreRun.
+  let runEnv = input.request.env;
+  if (input.request.resume) {
+    try { runEnv = checkpointEnvFor(input.request, loadCheckpoint(path.resolve(root, input.request.resume)).flags.env); } catch { /* reported below */ }
+  }
+  return withEnvOverrides(runEnv, async () => {
     // Every stage's model must be in the price table (invariant 74): refused
     // with the per-run overrides applied, before the URL check, the output
     // directory, the preflight, discovery or any API call. The gateway and

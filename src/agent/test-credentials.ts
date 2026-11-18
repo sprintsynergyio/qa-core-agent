@@ -139,6 +139,26 @@ const WRONG_PASSWORD_NAME_RE = /(?:wrong|incorrect|invalid|bad|mistyped|mismatch
 const ACCOUNT_WORD_RE = /e[\s_-]?mail|account|user/i;
 const PASSWORD_FIELD_RE = /pass[\s_-]?word|\bpasswd\b|\bpwd\b|passcode/i;
 
+/** A sign-up or forgot-password flow by its name: the account's identifier goes into another form there. */
+function isCreationOrResetName(name: string): boolean {
+  return CREATION_FLOW_RE.test(name) || FORGOT_FLOW_RE.test(name);
+}
+
+/**
+ * A sign-up or forgot-password trace: by its name, or by a page it
+ * navigates to (/auth/register, /auth/forgot-password). The path is read,
+ * never the host.
+ */
+function isCreationOrResetTrace(s: Pick<Scenario, 'name' | 'steps'>): boolean {
+  if (isCreationOrResetName(s.name)) return true;
+  return s.steps.some((st) => {
+    if (st.kind !== 'navigate') return false;
+    let p: string;
+    try { p = new URL(st.url).pathname; } catch { p = st.url; }
+    return CREATION_FLOW_RE.test(p) || FORGOT_FLOW_RE.test(p) || /forgot/i.test(p);
+  });
+}
+
 /** A login flow by its name or feature tag; a sign-up or forgot-password flow is not one. */
 export function isLoginFlow(s: Pick<Scenario, 'name'> & { feature?: string }): boolean {
   if (CREATION_FLOW_RE.test(s.name) || FORGOT_FLOW_RE.test(s.name)) return false;
@@ -153,7 +173,9 @@ export function isLoginFlow(s: Pick<Scenario, 'name'> & { feature?: string }): b
  */
 export function needsTestAccount(s: Pick<Scenario, 'name' | 'category'> & { feature?: string }): string | null {
   if (s.category === 'happy' && isLoginFlow(s)) return 'a happy login';
-  if (s.category === 'negative' && isLoginFlow(s) && WRONG_PASSWORD_NAME_RE.test(s.name)) return 'a wrong-password negative';
+  // A wrong password is a sign-in attempt whatever else the name says (run
+  // ceeaf2 D1: "rejected a wrong password" under the feature "account").
+  if (s.category === 'negative' && !isCreationOrResetName(s.name) && WRONG_PASSWORD_NAME_RE.test(s.name)) return 'a wrong-password negative';
   if ((s.category === 'negative' || s.category === 'edge') && DUPLICATE_EMAIL_RE.test(s.name) && ACCOUNT_WORD_RE.test(s.name)) return 'a duplicate-email negative';
   return null;
 }
@@ -194,13 +216,19 @@ function isPasswordFill(st: FillStep): boolean {
 
 /**
  * Wrong-password submits one execution of this scenario makes against the
- * test account: in a login flow that fills the account's identifier (a
- * 'user' marker), every non-empty password fill that is not the account's
+ * test account: in any trace that fills the account's identifier (a 'user'
+ * marker) and is not a sign-up or reset flow, every non-empty password fill
+ * that is not the account's
  * own password. A scenario that never fills the account counts 0, so a
  * wrong-credential negative on a generated identifier spends nothing.
  */
 export function wrongPasswordSubmits(s: Pick<Scenario, 'name' | 'steps'> & { feature?: string }): number {
-  if (!isLoginFlow(s)) return 0;
+  // Judged by the steps, never by the name or the feature tag alone (run
+  // ceeaf2 D1: "rejected a wrong password" under "account" counted 0, so
+  // stability re-ran it, the post-run check never ran, and 7 submits locked
+  // the account). Only a sign-up or reset trace is left out, because there
+  // the account's identifier is typed into another form.
+  if (isCreationOrResetTrace(s)) return 0;
   const fills = s.steps.filter((st): st is FillStep => st.kind === 'fill');
   if (!fills.some((f) => f.credential === 'user')) return 0;
   return fills.filter((f) => f.credential === undefined && !f.generate && f.value !== '' && isPasswordFill(f)).length;
@@ -283,5 +311,6 @@ export function wrongPasswordCountLine(ledger: WrongPasswordLedger, stage: Wrong
 
 /** The post-run line when the account no longer signs in. */
 export function lockoutWarningLine(n: number): string {
+  if (n === 0) return 'the test account no longer signs in after this run (0 wrong-password attempts counted)';
   return `the test account no longer signs in after ${n} wrong-password attempts`;
 }

@@ -73,7 +73,7 @@ check('G. setting overrides are the same env map on every surface', !!cliReq && 
 const cliMin = parseExploreArgv(['https://shop.example/']);
 const gwMin = parseGatewayCommand('/explore https://shop.example/', { lang: 'ts' });
 const mcpMin = exploreRequestFromToolArgs(z.object(exploreArgs).parse({ url: 'https://shop.example/' }));
-const norm = (r: ExploreRequest | null): unknown => r && { ...r, langProvided: undefined, pomProvided: undefined };
+const norm = (r: ExploreRequest | null): unknown => r && { ...r, langProvided: undefined, pomProvided: undefined, stagesProvided: undefined };
 check('H. minimal ask: CLI, gateway and MCP agree (ignoring the provided-flags markers)',
   cliMin.ok && gwMin.kind === 'explore' && same(norm(cliMin.request), norm(gwMin.request)) && same(norm(cliMin.request), norm(mcpMin)),
   JSON.stringify({ cli: cliMin.ok && cliMin.request, gw: gwMin.kind === 'explore' && gwMin.request, mcpMin }));

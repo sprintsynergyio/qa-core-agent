@@ -291,18 +291,26 @@ export function writePreflightStopReport(outDir: string, report: RunReport): str
 }
 
 /**
- * After the last stage that submits a wrong password: when any submit was
- * counted, sign in once more. A failure means the account is probably
- * locked: the line is printed and recorded as report.lockoutWarning.
+ * After the last stage that submits: whenever the run had test credentials,
+ * sign in once more. A failure means the account is probably locked: the
+ * line is printed and recorded as report.lockoutWarning. It runs whatever
+ * the wrong-password count says (run ceeaf2 D1: the count read 0, the check
+ * was skipped, and the lock went unreported).
  */
 export async function postRunLockoutCheck(opts: { report: RunReport; loginUrl?: string; env?: NodeJS.ProcessEnv; log: (line: string) => void; preflight?: typeof preflightLogin }): Promise<void> {
   const n = opts.report.wrongPasswordAttempts?.count ?? 0;
-  if (n === 0) return;
   const creds = resolveTestCredentials(opts.env ?? process.env, opts.report.url).creds;
   if (!creds) return;
   const r = await (opts.preflight ?? preflightLogin)({ url: opts.report.url, ...(opts.loginUrl ? { loginUrl: opts.loginUrl } : {}), user: creds.user, pass: creds.pass });
   if (r.outcome === 'ok') {
     opts.log(`post-run login check: the test account still signs in after ${n} wrong-password attempt${n === 1 ? '' : 's'}`);
+    return;
+  }
+  // No login page found (the generic pair on a site without one, invariant
+  // 70): nothing was signed in to, so nothing can be locked. Said, never a
+  // warning and never silent.
+  if (r.outcome === 'unreached') {
+    opts.log(`post-run login check: not checked, no login page found (tried ${r.tried.join(', ')})`);
     return;
   }
   opts.report.lockoutWarning = lockoutWarningLine(n);
