@@ -1273,6 +1273,15 @@ using the qa-core-heal evaluation report as the template.
   stability" was wrong (corrected). The checkpoint now records both.
 - D6 (run 10): recorded. First-pass rework 35.0 percent, five of seven
   about selector or recording tidiness.
+- D7 (run 10, found Nov 19 on the dashboard): ADDRESSED on the reader side
+  (PR dashboard/resumed-run-legacy-row, invariant 85). The first process's
+  host-memory record ($3.78, written at the billing stop) was indexed as a
+  pre-v2 "older run", so the localhost card read $20.58 spent this month
+  where the three reports sum to $16.80. Post-launch, engine side: a
+  resumed report still carries the resuming process's startedAt, and
+  `.qa-core/memory.json` still holds one record per process.
+- Display fix before the demo recording: PR #70 (invariant 84), the Summary
+  line said 4 tests were dropped by the emitted-spec check where 2 were.
 
 ## Then: go to market
 

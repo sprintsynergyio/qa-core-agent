@@ -289,6 +289,15 @@ export function indexRunDir(db: Database.Database, root: string, entry: RunDirEn
  * the report's finish time within LEGACY_MATCH_MS of the record's `at` (the
  * record is written when the run ends). A real report therefore always wins
  * and a legacy row is never allowed to shadow or overwrite it.
+ *
+ * A resumed run writes TWO records, one per process, and one report. The
+ * report's startedAt is the resuming process's start, so the first process's
+ * record (written at the stop) falls before it. The run id carries the first
+ * process's start (runIdTime), so the covered span runs from the earlier of
+ * the two starts to the report's end. Run ceeaf2: the record of its first
+ * process ($3.78, stopped 08:40:24Z, resumed 08:43:51Z) was imported as an
+ * "older run" and its cost, already inside the report's $5.87, was counted
+ * a second time in the project's spend.
  */
 export interface LegacyRecord { at: string; url: string; scenarios: number; cost: number; model: string; durationSec: number }
 
@@ -339,15 +348,28 @@ export function runRowFromLegacyRecord(host: string, rec: LegacyRecord, projectI
   };
 }
 
+/**
+ * Where a reported run's covered span begins: the earlier of the report's
+ * start and the start its run id carries. They differ only for a resumed
+ * run. NaN when neither is known. Exported for the smoke.
+ */
+export function coveredSpanStart(runId: string, startedAt: string | null): number {
+  const reported = startedAt ? Date.parse(startedAt) : NaN;
+  const fromId = runIdTime(runId)?.getTime() ?? NaN;
+  if (Number.isNaN(fromId)) return reported;
+  if (Number.isNaN(reported)) return fromId;
+  return Math.min(reported, fromId);
+}
+
 /** Does a real (reported) run cover this record? Same host, finished within the match window. */
 function coveredByReport(db: Database.Database, host: string | null, rec: LegacyRecord): boolean {
   const at = Date.parse(rec.at);
   if (Number.isNaN(at)) return false;
-  const rows = db.prepare("SELECT url, ended_at, started_at FROM runs WHERE report_path IS NOT NULL").all() as Array<{ url: string | null; ended_at: string | null; started_at: string | null }>;
+  const rows = db.prepare("SELECT id, url, ended_at, started_at FROM runs WHERE report_path IS NOT NULL").all() as Array<{ id: string; url: string | null; ended_at: string | null; started_at: string | null }>;
   return rows.some((r) => {
     if (hostOf(r.url) !== host) return false;
     const end = r.ended_at ? Date.parse(r.ended_at) : NaN;
-    const start = r.started_at ? Date.parse(r.started_at) : NaN;
+    const start = coveredSpanStart(r.id, r.started_at);
     return (!Number.isNaN(end) && Math.abs(end - at) <= LEGACY_MATCH_MS) || (!Number.isNaN(start) && at >= start - LEGACY_MATCH_MS && !Number.isNaN(end) && at <= end + LEGACY_MATCH_MS);
   });
 }
