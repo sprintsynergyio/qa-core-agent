@@ -136,11 +136,15 @@ function RecentRuns({ runs, error }: { runs: RunRow[] | null; error: string | nu
 }
 
 /**
- * The card grid: as many columns as fit at 300px or wider, never more than
+ * The card grid: as many columns as fit at 284px or wider, never more than
  * four (three 20px gaps). auto-fill keeps the empty tracks, so one or two
  * cards stay card-sized on a wide window and are never stretched across it.
+ * 284px is what lets four cards share a row on a 14 inch laptop at
+ * 100% zoom (a 1512px window leaves 1212px for the grid, 288px a card, which
+ * still holds "Product behavior to review" on one line); at 300px the fourth
+ * card dropped to a row of its own there and pushed Recent runs off screen.
  */
-export const PROJECT_GRID_COLUMNS = 'repeat(auto-fill, minmax(max(300px, calc((100% - 60px) / 4)), 1fr))';
+export const PROJECT_GRID_COLUMNS = 'repeat(auto-fill, minmax(max(284px, calc((100% - 60px) / 4)), 1fr))';
 
 /**
  * The headline words from the server totals (standing rule 3: the page only

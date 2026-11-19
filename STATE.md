@@ -1293,6 +1293,9 @@ using the qa-core-heal evaluation report as the template.
   scrolled sideways (530px) and so did a run page with a finding (its URL
   did not wrap); no smoke looked at either. Known and left:
   run 10's Duration reads 8m 17s (the resumed part only; D7 engine side).
+  Follow-up the same day (PR dashboard/four-cards-on-laptops): the card
+  minimum went from 300px to 284px, because on the owner's 14 inch laptop
+  at 100% zoom (1512px) the fourth card dropped to its own row.
 
 ## Then: go to market
 
