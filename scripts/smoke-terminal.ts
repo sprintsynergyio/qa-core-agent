@@ -306,6 +306,9 @@ await page.click('[data-testid="f-stabilize"]');
 for (const f of ['ceiling', 'repairReserve', 'maxSteps', 'plannerModel', 'explorerModel', 'criticModel'] as const) await page.fill(`[data-testid="f-${f}"]`, fullForm[f]);
 const shownCommand = (await page.textContent('[data-testid="command-preview"]')) ?? '';
 check('T5. with a typed ceiling the text beside Start reads that value', (await page.textContent('[data-testid="start-ceiling"]')) === 'ceiling $3.00, stops cleanly if reached', (await page.textContent('[data-testid="start-ceiling"]')) ?? '');
+// The top row is one line: the URL field, the Features field, Attach and Start share one vertical centre (Start used to sit above the fields, with the ceiling text under it).
+const topRow = await page.evaluate(() => ['f-url', 'f-features', 'srs-attach', 'start'].map((id) => { const r = document.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect(); return Math.round(r.top + r.height / 2); }));
+check('T5b. the URL field, the Features field, Attach and Start sit on one line (centres within 1px)', topRow.length === 4 && topRow.every((c) => Math.abs(c - topRow[0]!) <= 1), JSON.stringify(topRow));
 // The editable textarea appears on request and carries the same command.
 await page.click('[data-testid="edit-command"]');
 await page.waitForSelector('[data-testid="command"]');

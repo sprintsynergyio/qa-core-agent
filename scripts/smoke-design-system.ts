@@ -194,7 +194,7 @@ for (const theme of ['light', 'dark'] as const) {
   await context.addInitScript(() => { localStorage.setItem('qa-core.theme', 'light'); });
   const page = await context.newPage();
   const sideways: string[] = [];
-  const WIDTHS = [390, 1280, 1580, 1976];
+  const WIDTHS = [390, 1280, 1580, 1976, 2056];
   const pages = ROUTES.filter((r) => !r.dialog);
   for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 900 });

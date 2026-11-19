@@ -46,8 +46,8 @@ export default {
         cost: { DEFAULT: 'hsl(var(--cost))', soft: 'hsl(var(--cost) / 0.12)' },
       },
       boxShadow: { lift: 'var(--shadow-lift)' },
-      // The content column: wide enough for four project cards in a row, the same on every page.
-      maxWidth: { content: '1600px' },
+      // The content column, the same on every page. 1920px fills a 2056px window (the sidebar is 236px, the page padding 32px a side), so no empty band sits beside the content there; it was 1600px, which left about 110px a side.
+      maxWidth: { content: '1920px' },
     },
   },
   plugins: [animate],

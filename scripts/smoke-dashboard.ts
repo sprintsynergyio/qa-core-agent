@@ -256,18 +256,22 @@ for (const theme of ['dark', 'light'] as const) {
     check(`${theme}: at ${width} every card has the same height and "Open project" shares one top (within 1px)`, cardGeometry.length > 1 && cardGeometry.every((g) => Math.abs(g.h - cardGeometry[0]!.h) <= 1 && Math.abs(g.open - cardGeometry[0]!.open) <= 1), JSON.stringify(cardGeometry));
   }
   // Wide windows: at most four cards in a row, each a quarter of the row; three cards are never stretched across it. The no-document row stays on one line at the narrowest four-up card.
-  for (const width of [1512, 1580, 1976]) {
+  for (const width of [1512, 1580, 1976, 2056]) {
     await page.setViewportSize({ width, height: 900 });
     const wide = await page.evaluate(() => {
       const grid = document.querySelector('[data-testid="project-grid"]')!.getBoundingClientRect();
       const cardRects = Array.from(document.querySelectorAll('[data-testid="project-card"]')).map((el) => el.getBoundingClientRect());
       const none = document.querySelector('[data-testid="coverage-none"]')!;
       const label = none.parentElement!.firstElementChild!;
-      return { grid: grid.width, widths: cardRects.map((r) => Math.round(r.width)), tops: cardRects.map((r) => Math.round(r.top)), labelH: label.getBoundingClientRect().height, noneH: none.getBoundingClientRect().height, reviewRows: Array.from(document.querySelectorAll('[data-testid="card-review-row"]')).map((r) => Math.round(r.getBoundingClientRect().height)), sameLine: Math.abs(label.getBoundingClientRect().top - none.getBoundingClientRect().top) <= 2, hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+      return { grid: grid.width, widths: cardRects.map((r) => Math.round(r.width)), tops: cardRects.map((r) => Math.round(r.top)), labelH: label.getBoundingClientRect().height, noneH: none.getBoundingClientRect().height, reviewRows: Array.from(document.querySelectorAll('[data-testid="card-review-row"]')).map((r) => Math.round(r.getBoundingClientRect().height)), reviewTops: Array.from(document.querySelectorAll('[data-testid="card-review-row"]')).map((r) => Math.round(r.getBoundingClientRect().top)), sentenceLines: Array.from(document.querySelectorAll('[data-testid="card-sentence"]')).map((el) => Array.from(el.children).filter((c) => getComputedStyle(c).display === 'block').length), bandLeft: Math.round(grid.left - document.querySelector('[data-testid="sidebar"]')!.getBoundingClientRect().right), bandRight: Math.round(document.documentElement.clientWidth - grid.right), sameLine: Math.abs(label.getBoundingClientRect().top - none.getBoundingClientRect().top) <= 2, hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth };
     });
     const quarter = (wide.grid - 60) / 4;
     // 1512 is a 14 inch laptop at 100% zoom: four cards must still fit in a row there (at a 300px minimum the fourth dropped to its own row), with every card row on one line.
     check(`${theme}: at ${width} the cards share one row, each is a quarter of the row and at least 284px (three cards are not stretched), the review row and the "Requirements" row each sit on one line, no horizontal scroll`, wide.widths.length === 3 && wide.tops.every((t) => t === wide.tops[0]) && wide.widths.every((w) => Math.abs(w - quarter) <= 1 && w >= 284) && wide.sameLine && wide.labelH < 30 && wide.noneH < 30 && wide.reviewRows.length === 3 && wide.reviewRows.every((h) => h < 30) && !wide.hscroll, JSON.stringify(wide));
+    // The owner's window (Nov 19) is about 2056 wide at 100% zoom: at a 1600px column the page left about 110px of nothing on each side. Up to 2056 the content runs from the sidebar to the window edge with only the page padding (32px) beside it.
+    check(`${theme}: at ${width} the content fills the window: 32px of page padding on each side of the grid and no empty band`, wide.bandLeft === 32 && wide.bandRight === 32, JSON.stringify({ left: wide.bandLeft, right: wide.bandRight }));
+    // Every card's sentence is two lines, so the rows under it line up across the cards whatever each sentence says.
+    check(`${theme}: at ${width} every card sentence is two lines and the review rows share one top`, wide.sentenceLines.length === 3 && wide.sentenceLines.every((n) => n === 2) && wide.reviewTops.every((t) => Math.abs(t - wide.reviewTops[0]!) <= 1), JSON.stringify({ lines: wide.sentenceLines, tops: wide.reviewTops }));
   }
   for (const width of [390, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });

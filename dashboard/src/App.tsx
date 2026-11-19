@@ -47,6 +47,6 @@ export default function App() {
 /** Page content fades in (150 ms) on every route change; off under prefers-reduced-motion (index.css). */
 function PageTransition({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
-  // One content width for every page (max-w-content, 1600px), so the left edge never moves between pages on a wide window.
+  // One content width for every page (max-w-content, 1920px), so the left edge never moves between pages. Up to a 2056px window the content runs from the sidebar to the window edge; past that it is centred.
   return <div key={pathname} className="page-enter mx-auto max-w-content">{children}</div>;
 }

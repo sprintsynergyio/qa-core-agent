@@ -1293,9 +1293,13 @@ using the qa-core-heal evaluation report as the template.
   scrolled sideways (530px) and so did a run page with a finding (its URL
   did not wrap); no smoke looked at either. Known and left:
   run 10's Duration reads 8m 17s (the resumed part only; D7 engine side).
-  Follow-up the same day (PR dashboard/four-cards-on-laptops): the card
-  minimum went from 300px to 284px, because on the owner's 14 inch laptop
-  at 100% zoom (1512px) the fourth card dropped to its own row.
+  Follow-up the same day (PR #73, dashboard/four-cards-on-laptops), after
+  the owner's screenshots at 100% zoom on a window about 2056px wide: the
+  content column went from 1600px to 1920px (no empty band beside the
+  content on his window), the card minimum from 300px to 284px (four cards
+  fit at 1512px), a card's sentence is always two lines so the rows line up,
+  the findings table has one frame, and the Run a test top row is one line.
+  My first reading of his screen (a 1512px laptop zoomed out) was wrong.
 
 ## Then: go to market
 

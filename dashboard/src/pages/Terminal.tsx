@@ -127,7 +127,7 @@ export function TerminalPage() {
 
   return (
     <div className="flex flex-col gap-8" data-testid="terminal">
-      <PageHeader title="Run a test" description="Start a QA-Core run and watch it live. Commands only, no shell.">
+      <PageHeader title="Run a test" description="Give the agent a URL and watch the run live.">
         <details className="relative text-small" data-testid="usage-help">
           <summary className="inline-flex cursor-pointer items-center gap-1 text-fg-2 hover:text-fg"><HelpCircle className="h-5 w-5" /> usage</summary>
           <div className="absolute right-0 z-10 mt-1 w-[28rem] rounded-lg border border-line bg-bg-1 p-4 text-fg-2 shadow-lift">
@@ -147,24 +147,21 @@ export function TerminalPage() {
       {/* Tier 1: what to test, with what, and go. */}
       <section className="rounded-lg border border-line bg-bg-1 p-6" data-testid="composer" data-tier="top">
         <div className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_auto] md:items-end">
-          <Field label="URL" hint="the entry page">
+          <Field label="URL" hint="the page the run starts on">
             <input className={inputCls} data-testid="f-url" placeholder="e.g. https://www.saucedemo.com/" value={form.url} onChange={(e) => setField('url', e.target.value)} />
           </Field>
-          <Field label="Features" hint="--features; empty lets the Planner infer">
+          <Field label="Features" hint="comma separated; leave empty and the Planner picks">
             <input className={inputCls} data-testid="f-features" placeholder="e.g. login,cart" value={form.features} onChange={(e) => setField('features', e.target.value)} />
           </Field>
-          <Field label="SRS" hint=".md, .txt, .pdf, .docx; 2 MB cap">
+          <Field label="Requirements document" hint=".md, .txt, .pdf or .docx, up to 2 MB">
             <div className="flex flex-wrap items-center gap-2">
               <input ref={fileRef} type="file" accept=".md,.txt,.pdf,.docx" hidden data-testid="f-srs" onChange={(e) => pickSrs(e.target.files?.[0])} />
-              <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()} data-testid="srs-attach"><Paperclip className="h-4 w-4" /> Attach</Button>
+              <Button type="button" variant="outline" onClick={() => fileRef.current?.click()} data-testid="srs-attach"><Paperclip className="h-4 w-4" /> Attach</Button>
               {srs ? <span className="text-small text-fg" data-testid="srs-name">{srs.name} <span className="text-fg-2">{formatSize(srs.size)}</span></span> : <span className="text-small text-fg-2" data-testid="srs-name">none attached</span>}
               {srs ? <Button type="button" variant="ghost" size="sm" onClick={() => { setSrs(null); if (fileRef.current) fileRef.current.value = ''; }} aria-label="Remove SRS"><X className="h-4 w-4" /></Button> : null}
             </div>
           </Field>
-          <div className="flex flex-col items-start gap-1">
-            <Button type="button" onClick={start} disabled={!canStart} data-testid="start" title={blocker ?? 'Start the run'}><Play className="h-4 w-4" /> {starting ? 'Starting…' : 'Start'}</Button>
-            {isExplore && effectiveCeiling ? <span className="text-small text-fg-2" data-testid="start-ceiling">ceiling <span className="money font-medium text-fg">{formatMoney(Number(effectiveCeiling))}</span>, stops cleanly if reached</span> : null}
-          </div>
+          <Button type="button" onClick={start} disabled={!canStart} data-testid="start" title={blocker ?? 'Start the run'}><Play className="h-4 w-4" /> {starting ? 'Starting…' : 'Start'}</Button>
         </div>
         {srsError ? <div className="mt-2 text-small text-reject" data-testid="srs-error">{srsError}</div> : null}
         {projectSrs && !srs ? (
@@ -177,6 +174,7 @@ export function TerminalPage() {
         {projectSrs && srs ? <div className="mt-2 text-small text-fg-2" data-testid="project-srs-overridden">The attached file overrides the project SRS ({projectSrs.name}).</div> : null}
         <div className="mt-2 flex flex-wrap items-center gap-3 text-small">
           {blocker ? <span className="text-fg-2" data-testid="start-blocker">{blocker}</span> : <span className="text-fg-2">the run opens at /runs/&lt;run id&gt; and streams live</span>}
+          {isExplore && effectiveCeiling ? <span className="text-fg-2 md:ml-auto" data-testid="start-ceiling">ceiling <span className="money font-medium text-fg">{formatMoney(Number(effectiveCeiling))}</span>, stops cleanly if reached</span> : null}
           {gw.activeRun ? <Badge variant="accent" data-testid="active-run">running: {gw.activeRun.run_id}</Badge> : null}
           {gw.lastError && !starting ? <span className="text-reject" data-testid="start-error">{gw.lastError}</span> : null}
         </div>
