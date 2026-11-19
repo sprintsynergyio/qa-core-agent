@@ -364,6 +364,35 @@ function Verify({ v }: { v: RunDetailStages['verify'] }) {
   );
 }
 
+type EmittedCheck = NonNullable<RunDetailStages['summary']['emitted_check']>;
+
+/** What happened to a test that did not pass, as the run's records say (src/agent/emitted-outcome.ts). */
+const OUTCOME_LABEL: Record<'passed' | 'skipped' | 'dropped' | 'kept' | 'removed', string> = {
+  passed: 'passed',
+  dropped: 'failed twice, dropped from the framework',
+  kept: 'failed, kept in the framework',
+  removed: 'setup test, removed with the dropped login tests',
+  skipped: 'not run',
+};
+
+/**
+ * The check's one line. The counts come from the server (emittedTestOutcomes);
+ * a report read by an older gateway carries no outcome counts, and then the
+ * line says only how many failed, never that they were dropped.
+ */
+export function emittedCheckText(ec: EmittedCheck): string {
+  const parts: string[] = [`${ec.passed} of ${ec.total} passed`];
+  if (ec.dropped === undefined) {
+    if (ec.failed) parts.push(`${ec.failed} failed`);
+    return parts.join(', ');
+  }
+  if (ec.dropped) parts.push(`${ec.dropped} failed twice and dropped`);
+  if (ec.kept) parts.push(`${ec.kept} failed and kept`);
+  if (ec.removed) parts.push(`${ec.removed} setup test removed with the login tests`);
+  if (ec.skipped) parts.push(`${ec.skipped} not run`);
+  return parts.join(', ');
+}
+
 const FUNNEL_ROWS: Array<{ key: 'planned' | 'generated' | 'dropped' | 'incomplete' | 'findings' | 'skipped' | 'emitted_failed'; label: string; cls: string }> = [
   { key: 'planned', label: 'planned', cls: 'bg-accent' },
   { key: 'generated', label: 'shipped', cls: 'bg-pass' },
@@ -438,7 +467,14 @@ function Summary({ sm, findings, live }: { sm: RunDetailStages['summary']; findi
           <span className="text-fg-2">Emitted-spec check: </span>
           {ec.inconclusive
             ? <span className="text-rework">inconclusive{ec.reason ? `, ${ec.reason}` : ''}</span>
-            : <span className={ec.failed > 0 ? 'text-reject' : 'text-pass'}>{ec.passed} of {ec.total} passed{ec.failed ? `, ${ec.failed} failed twice and dropped` : ''} ({(ec.duration_ms / 1000).toFixed(1)}s)</span>}
+            : <span className={ec.failed > 0 ? 'text-reject' : 'text-pass'}>{emittedCheckText(ec)} ({(ec.duration_ms / 1000).toFixed(1)}s)</span>}
+          {!ec.inconclusive && ec.tests.some((t) => t.outcome && t.outcome !== 'passed') ? (
+            <ul className="mt-1 text-caption text-fg-2" data-testid="emitted-check-tests">
+              {ec.tests.filter((t) => t.outcome && t.outcome !== 'passed').map((t) => (
+                <li key={t.name} title={t.error ?? undefined} data-outcome={t.outcome}>{t.name}: {OUTCOME_LABEL[t.outcome!]}</li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
 
