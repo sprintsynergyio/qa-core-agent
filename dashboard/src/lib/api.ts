@@ -129,7 +129,7 @@ export interface RunDetailStages {
     status: StageStatus; stat: string; shipped: number; total_usd: number; findings_count: number; locator_count?: number; uncovered_count: number; attention: number;
     /** findings_product and findings_locator split the findings bucket by kind, counted by the server (invariant 67). */
     funnel: { planned: number; generated: number; dropped: number; dropped_by_stage: Record<string, number>; incomplete: number; findings: number; findings_product?: number; findings_locator?: number; skipped: number; emitted_failed?: number; balanced: boolean; added: number } | null;
-    emitted_check?: { inconclusive: boolean; reason: string | null; passed: number; failed: number; total: number; duration_ms: number; tests: Array<{ name: string; status: string; error: string | null }> } | null;
+    emitted_check?: { inconclusive: boolean; reason: string | null; passed: number; failed: number; total: number; dropped?: number; kept?: number; removed?: number; skipped?: number; duration_ms: number; tests: Array<{ name: string; status: string; outcome?: 'passed' | 'skipped' | 'dropped' | 'kept' | 'removed'; error: string | null }> } | null;
     /** requirements: the map cost from the report; null on a report written before the field existed. */
     cost_split: { planner: number; explorer: number; critic: number; repair: number; stabilizer: number; requirements: number | null; total: number };
     rule_coverage: { covered: Array<{ rule_id: string; scenarios: string[] }>; uncovered: Array<{ rule_id: string; text: string; reason: string; detail?: string | null }> } | null;

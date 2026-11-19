@@ -1,0 +1,223 @@
+{
+ "emittedRun": {
+  "durationMs": 95802,
+  "tests": [
+   {
+    "name": "authenticate",
+    "status": "failed",
+    "file": "auth.setup.ts",
+    "attempts": 2,
+    "error": "Error: expect(page).toHaveURL(expected) failed"
+   },
+   {
+    "name": "[happy] logged in with valid credentials",
+    "status": "failed",
+    "file": "account/account.spec.ts",
+    "attempts": 2,
+    "error": "Error: expect(page).toHaveURL(expected) failed"
+   },
+   {
+    "name": "[negative] rejected a wrong password",
+    "status": "failed",
+    "file": "account/account.spec.ts",
+    "attempts": 2,
+    "error": "Error: expect(locator).toContainText(expected) failed"
+   },
+   {
+    "name": "[negative] rejected email field left empty",
+    "status": "passed",
+    "file": "account/account.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "[negative] rejected password field left empty",
+    "status": "passed",
+    "file": "account/account.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "[negative] rejected registration with an already-used email address",
+    "status": "passed",
+    "file": "account/account.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "[negative] rejected registration with an empty required field",
+    "status": "passed",
+    "file": "account/account.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "[negative] rejected an empty email field",
+    "status": "passed",
+    "file": "account/account.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "[negative] rejected a malformed email format",
+    "status": "passed",
+    "file": "account/account.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "[happy] filled all required fields and registered successfully",
+    "status": "passed",
+    "file": "account/account.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "a11y: landing page has no critical/serious WCAG 2 AA violations",
+    "status": "failed",
+    "file": "a11y/landing.a11y.spec.ts",
+    "attempts": 2,
+    "error": "Error: expect(received).toEqual(expected) // deep equality"
+   },
+   {
+    "name": "[edge] added item to cart, opened cart, removed the product and the row disappeared from the cart table",
+    "status": "passed",
+    "file": "cart/cart.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "[happy] added item to cart, opened cart, changed quantity and the line total updated",
+    "status": "passed",
+    "file": "cart/cart.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "[happy] displayed hand tools with names, images, and prices",
+    "status": "passed",
+    "file": "catalogue/catalogue.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "[happy] sorted products by price low to high and verified ascending order",
+    "status": "passed",
+    "file": "catalogue/catalogue.spec.ts",
+    "attempts": 2
+   },
+   {
+    "name": "[happy] clicked a product and landed on its detail page with matching name and price",
+    "status": "passed",
+    "file": "catalogue/catalogue.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "[happy] filtered by Hammer subcategory and only hammer products remained",
+    "status": "passed",
+    "file": "catalogue/catalogue.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "[negative] rejected submission when message field is empty",
+    "status": "passed",
+    "file": "contact/contact.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "[data] contact — rejected an email address without an @ sign",
+    "status": "passed",
+    "file": "contact/contact.spec.ts",
+    "attempts": 1
+   },
+   {
+    "name": "[data] contact — submitted contact form with valid message and email",
+    "status": "passed",
+    "file": "contact/contact.spec.ts",
+    "attempts": 1
+   }
+  ]
+ },
+ "emittedFailed": [
+  {
+   "scenario": "logged in with valid credentials",
+   "error": "Error: expect(page).toHaveURL(expected) failed"
+  },
+  {
+   "scenario": "rejected a wrong password",
+   "error": "Error: expect(locator).toContainText(expected) failed"
+  }
+ ],
+ "scenarios": [
+  {
+   "name": "displayed hand tools with names, images, and prices",
+   "category": "happy",
+   "feature": "catalogue"
+  },
+  {
+   "name": "sorted products by price low to high and verified ascending order",
+   "category": "happy",
+   "feature": "catalogue"
+  },
+  {
+   "name": "rejected submission when message field is empty",
+   "category": "negative",
+   "feature": "contact"
+  },
+  {
+   "name": "rejected an email address without an @ sign",
+   "category": "negative",
+   "feature": "contact"
+  },
+  {
+   "name": "rejected email field left empty",
+   "category": "negative",
+   "feature": "account"
+  },
+  {
+   "name": "rejected password field left empty",
+   "category": "negative",
+   "feature": "account"
+  },
+  {
+   "name": "rejected registration with an already-used email address",
+   "category": "negative",
+   "feature": "account"
+  },
+  {
+   "name": "rejected registration with an empty required field",
+   "category": "negative",
+   "feature": "account"
+  },
+  {
+   "name": "rejected an empty email field",
+   "category": "negative",
+   "feature": "account"
+  },
+  {
+   "name": "rejected a malformed email format",
+   "category": "negative",
+   "feature": "account"
+  },
+  {
+   "name": "clicked a product and landed on its detail page with matching name and price",
+   "category": "happy",
+   "feature": "catalogue"
+  },
+  {
+   "name": "filtered by Hammer subcategory and only hammer products remained",
+   "category": "happy",
+   "feature": "catalogue"
+  },
+  {
+   "name": "added item to cart, opened cart, removed the product and the row disappeared from the cart table",
+   "category": "edge",
+   "feature": "cart"
+  },
+  {
+   "name": "added item to cart, opened cart, changed quantity and the line total updated",
+   "category": "happy",
+   "feature": "cart"
+  },
+  {
+   "name": "submitted contact form with valid message and email",
+   "category": "happy",
+   "feature": "contact"
+  },
+  {
+   "name": "filled all required fields and registered successfully",
+   "category": "happy",
+   "feature": "account"
+  }
+ ]
+}

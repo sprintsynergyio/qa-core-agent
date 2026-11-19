@@ -10,6 +10,7 @@ import { EVENTS_FILE } from './events.js';
 import { findingsOf } from '../agent/reconcile.js';
 import { findingKindOf, type FindingKind } from '../agent/finding-kind.js';
 import { hasRequirementsCost } from '../agent/cost-total.js';
+import { countOutcomes, emittedTestOutcomes, type EmittedOutcome } from '../agent/emitted-outcome.js';
 
 /**
  * One run, truthfully, from its stored artifacts (dashboard v2 plan, PR B).
@@ -172,7 +173,12 @@ export interface RunDetailStages {
     /** findings_product and findings_locator split the findings bucket by kind (invariant 67), counted here from the report, never in the UI. */
     funnel: { planned: number; generated: number; dropped: number; dropped_by_stage: Record<string, number>; incomplete: number; findings: number; findings_product: number; findings_locator: number; skipped: number; emitted_failed: number; balanced: boolean; added: number } | null;
     /** report.emittedRun: the written framework run once with Playwright before the zip. null on a report from before the stage existed. */
-    emitted_check: { inconclusive: boolean; reason: string | null; passed: number; failed: number; total: number; duration_ms: number; tests: Array<{ name: string; status: string; error: string | null }> } | null;
+    /**
+     * dropped / kept / removed / skipped: what happened to each test that did
+     * not pass, from the run's own records (emittedTestOutcomes), never the
+     * failed count read as dropped (run ceeaf2 read "4 failed twice and dropped"; 2 were).
+     */
+    emitted_check: { inconclusive: boolean; reason: string | null; passed: number; failed: number; total: number; dropped: number; kept: number; removed: number; skipped: number; duration_ms: number; tests: Array<{ name: string; status: string; outcome: EmittedOutcome; error: string | null }> } | null;
     /** requirements: the map cost read off the report (cost.requirementsUsd); null on a report written before the field existed. */
     cost_split: { planner: number; explorer: number; critic: number; repair: number; stabilizer: number; requirements: number | null; total: number };
     rule_coverage: { covered: Array<{ rule_id: string; scenarios: string[] }>; uncovered: Array<{ rule_id: string; text: string; reason: string; detail: string | null }> } | null;
@@ -499,12 +505,17 @@ export function buildStages(report: RunReport, artifacts: RunDetailArtifact[], t
     findings_count: findingsProduct, locator_count: findingsLocator, uncovered_count: uncoveredCount, attention,
     funnel: rec ? { planned: rec.planned, generated: rec.generated, dropped: (rec.dropped ?? []).length, dropped_by_stage: droppedByStage, incomplete: (rec.incomplete ?? []).length, findings: (rec.findings ?? []).length, findings_product: findingsProduct, findings_locator: findingsLocator, skipped: (rec.skipped ?? []).length, emitted_failed: (rec.emitted_failed ?? []).length, balanced: rec.balanced, added: rec.added ?? 0 } : null,
     emitted_check: report.emittedRun
-      ? {
-        inconclusive: report.emittedRun.inconclusive === true, reason: report.emittedRun.reason ?? null,
-        passed: report.emittedRun.tests.filter((t) => t.status === 'passed').length, failed: report.emittedRun.tests.filter((t) => t.status === 'failed').length, total: report.emittedRun.tests.length,
-        duration_ms: report.emittedRun.durationMs,
-        tests: report.emittedRun.tests.map((t) => ({ name: t.name, status: t.status, error: t.error ?? null })),
-      }
+      ? (() => {
+        const tests = emittedTestOutcomes(report);
+        const n = countOutcomes(tests);
+        return {
+          inconclusive: report.emittedRun.inconclusive === true, reason: report.emittedRun.reason ?? null,
+          passed: n.passed, failed: tests.filter((t) => t.status === 'failed').length, total: tests.length,
+          dropped: n.dropped, kept: n.kept, removed: n.removed, skipped: n.skipped,
+          duration_ms: report.emittedRun.durationMs,
+          tests,
+        };
+      })()
       : null,
     cost_split: { planner: usd(cost.plannerUsd), explorer: usd(cost.usd) - usd(cost.repairUsd), critic: usd(cost.criticUsd), repair: usd(cost.repairUsd), stabilizer, requirements: hasRequirementsCost(report) ? usd(cost.requirementsUsd) : null, total: totalUsd },
     rule_coverage: rc ? { covered: (rc.covered ?? []).map((c) => ({ rule_id: c.ruleId, scenarios: c.scenarios ?? [] })), uncovered: (rc.uncovered ?? []).map((u) => ({ rule_id: u.ruleId, text: u.text, reason: u.reason, detail: u.detail ?? null })) } : null,
