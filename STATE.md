@@ -1282,6 +1282,17 @@ using the qa-core-heal evaluation report as the template.
   `.qa-core/memory.json` still holds one record per process.
 - Display fix before the demo recording: PR #70 (invariant 84), the Summary
   line said 4 tests were dropped by the emitted-spec check where 2 were.
+- Look before the demo recording (owner, Nov 19: "we need to make the ui
+  better"): PR dashboard/best-version (invariant 86). Inter replaces Plus
+  Jakarta Sans; dark cards are lifted off the page; one 1600px content width;
+  Projects shows at most four cards in a row and a "Recent runs" list under
+  them; the run page's six stages are tabs and a finished run opens on
+  Summary, with the three numbers and the one download on the first screen
+  (run 10's page: 12,713px tall before, 3,894px after at 1580 wide). No
+  number changed. Found on the way and fixed: at 390 wide the Settings page
+  scrolled sideways (530px) and so did a run page with a finding (its URL
+  did not wrap); no smoke looked at either. Known and left:
+  run 10's Duration reads 8m 17s (the resumed part only; D7 engine side).
 
 ## Then: go to market
 

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Download } from 'lucide-react';
 import { elementLookedFor } from '@/lib/finding-kind';
 import { api, type RunDetailFinding, type RunDetailStages, type StageKey, type StageStatus } from '@/lib/api';
@@ -5,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Term } from '@/components/Term';
 import { Button } from '@/components/ui/button';
 import { exactMoney, formatCount, formatMoney, formatSize, pct } from '@/lib/format';
+import { defaultStage, stageForKey } from '@/lib/stage-tabs';
 
 /**
  * The six-stage run view (dashboard v2 plan, PR B, deferred part), ported
@@ -12,6 +14,11 @@ import { exactMoney, formatCount, formatMoney, formatSize, pct } from '@/lib/for
  * every number on screen is a report field the server copied. Nothing is
  * computed here; the one derived value (explorer = usd minus repair) is done
  * server-side, as invariant 47 allows. Live events are PR C.
+ *
+ * The rail is a tab list (invariant 86): one stage's panel is on screen at a
+ * time and a finished run opens on Summary, so the first screen of a run is
+ * what shipped, what it cost and the download. All six panels stay in the
+ * document; the tab only decides which one is shown.
  */
 
 const STAGES: Array<{ key: StageKey; num: number; name: string; sub: string }> = [
@@ -30,10 +37,6 @@ const STATUS_CLASS: Record<StageStatus, string> = { done: 'text-pass', warning: 
 const VERDICT_VARIANT = { pass: 'pass', rework: 'rework', reject: 'reject' } as const;
 const CATEGORY_VARIANT: Record<string, 'pass' | 'reject' | 'rework' | 'neutral'> = { happy: 'pass', negative: 'reject', edge: 'rework' };
 
-function scrollToStage(key: StageKey): void {
-  document.getElementById(`stage-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
 export type UnmatchedVerdict = { scenario: string; verdict: string; reasons: string[] };
 
 /**
@@ -43,34 +46,48 @@ export type UnmatchedVerdict = { scenario: string; verdict: string; reasons: str
  * the same component with live off, identical to a history view.
  */
 export function StageView({ stages, findings, unmatched, live = false }: { stages: RunDetailStages; findings: RunDetailFinding[]; unmatched: UnmatchedVerdict[]; live?: boolean }) {
+  // The rail is a tab list: one stage's panel is on screen at a time. The stage a person picked stays
+  // picked; until they pick one the view follows defaultStage. Every panel stays in the document
+  // (hidden), so nothing about what is rendered from the report depends on the tab.
+  const [picked, setPicked] = useState<StageKey | null>(null);
+  const active = picked ?? defaultStage(stages, live);
+  // Arrow keys, Home and End move along the tab list, as a tab list should.
+  const onRailKey = (e: React.KeyboardEvent<HTMLElement>): void => {
+    const key = stageForKey(active, e.key);
+    if (!key) return;
+    e.preventDefault();
+    setPicked(key);
+    document.getElementById(`stage-tab-${key}`)?.focus();
+  };
   return (
-    <div className="flex flex-col gap-4" data-testid="stage-view" data-live={live ? 'true' : 'false'}>
-      <nav className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6" aria-label="Pipeline stages" data-testid="stage-rail">
+    <div className="flex flex-col gap-4" data-testid="stage-view" data-live={live ? 'true' : 'false'} data-active-stage={active}>
+      <nav className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-[1fr_1fr_1.5fr_1.25fr_1fr_1fr]" role="tablist" aria-label="Pipeline stages" data-testid="stage-rail" onKeyDown={onRailKey}>
         {STAGES.map((s) => {
           const st = stages[s.key];
+          const on = s.key === active;
           return (
-            <button key={s.key} type="button" onClick={() => scrollToStage(s.key)} className="flex flex-col items-start gap-1 rounded-lg border border-line bg-bg-1 px-4 py-3 text-left hover:border-line-strong" data-testid="rail-item" data-stage={s.key} data-status={st.status} title={`Jump to ${s.name}`}>
+            <button key={s.key} type="button" role="tab" id={`stage-tab-${s.key}`} aria-selected={on} aria-controls={`stage-${s.key}`} tabIndex={on ? 0 : -1} onClick={() => setPicked(s.key)} className={`flex flex-col items-start gap-1 rounded-lg border px-4 py-3 text-left ${on ? 'border-brand bg-bg-1 ring-1 ring-brand' : 'border-line bg-bg-1 hover:border-line-strong'}`} data-testid="rail-item" data-stage={s.key} data-status={st.status} title={`Show ${s.name}`}>
               <span className="flex w-full items-center gap-2 text-small"><span className="mono text-fg-2">{s.num}</span><span className="font-medium text-fg">{s.name}</span><span className={`ml-auto ${STATUS_CLASS[st.status]} ${st.status === 'running' ? 'animate-pulse' : ''}`} data-testid="rail-status">{STATUS_LABEL[st.status]}</span></span>
-              <span className="mono whitespace-normal break-words text-fg-2" data-testid="rail-stat">{st.stat}</span>
+              <span className="whitespace-normal break-words text-small tabular-nums text-fg-2" data-testid="rail-stat">{st.stat}</span>
             </button>
           );
         })}
       </nav>
 
-      <Panel k="discovery" s={stages.discovery.status}><Discovery d={stages.discovery} /></Panel>
-      <Panel k="plan" s={stages.plan.status}><Plan p={stages.plan} /></Panel>
-      <Panel k="explore" s={stages.explore.status}><Explore e={stages.explore} /></Panel>
-      <Panel k="review" s={stages.review.status}><Review r={stages.review} unmatched={unmatched} /></Panel>
-      <Panel k="verify" s={stages.verify.status}><Verify v={stages.verify} /></Panel>
-      <Panel k="summary" s={stages.summary.status}><Summary sm={stages.summary} findings={findings} live={live} /></Panel>
+      <Panel k="discovery" s={stages.discovery.status} active={active === 'discovery'}><Discovery d={stages.discovery} /></Panel>
+      <Panel k="plan" s={stages.plan.status} active={active === 'plan'}><Plan p={stages.plan} /></Panel>
+      <Panel k="explore" s={stages.explore.status} active={active === 'explore'}><Explore e={stages.explore} /></Panel>
+      <Panel k="review" s={stages.review.status} active={active === 'review'}><Review r={stages.review} unmatched={unmatched} /></Panel>
+      <Panel k="verify" s={stages.verify.status} active={active === 'verify'}><Verify v={stages.verify} /></Panel>
+      <Panel k="summary" s={stages.summary.status} active={active === 'summary'}><Summary sm={stages.summary} findings={findings} live={live} /></Panel>
     </div>
   );
 }
 
-function Panel({ k, s, children }: { k: StageKey; s: StageStatus; children: React.ReactNode }) {
+function Panel({ k, s, active, children }: { k: StageKey; s: StageStatus; active: boolean; children: React.ReactNode }) {
   const meta = STAGES.find((x) => x.key === k)!;
   return (
-    <section id={`stage-${k}`} className="scroll-mt-4 rounded-lg border border-line bg-bg-1 p-6" data-testid="stage-panel" data-stage={k} data-status={s}>
+    <section id={`stage-${k}`} role="tabpanel" aria-labelledby={`stage-tab-${k}`} hidden={!active} className="rounded-lg border border-line bg-bg-1 p-6" data-testid="stage-panel" data-stage={k} data-status={s}>
       <header className="mb-4 flex flex-wrap items-baseline gap-2">
         <span className="mono text-fg-2">{meta.num}</span>
         <h2 className="text-heading font-semibold">{meta.name}</h2>
@@ -435,12 +452,28 @@ function Summary({ sm, findings, live }: { sm: RunDetailStages['summary']; findi
   ];
   return (
     <>
-      <div className="grid gap-3 sm:grid-cols-3" data-testid="hero">
+      <div className="grid gap-3 lg:grid-cols-4">
+      <div className="grid min-w-0 gap-3 sm:grid-cols-3 lg:col-span-3" data-testid="hero">
         <Hero n={String(sm.shipped)} label="tests shipped" testid="hero-shipped" />
         <Hero n={formatMoney(sm.total_usd)} label="total cost" title={`exact: ${exactMoney(sm.total_usd)}`} testid="hero-cost" />
         <Hero n={String(sm.attention)} label={`need${sm.attention === 1 ? 's' : ''} attention`} sub={`${formatCount(sm.findings_count, 'finding', 'findings')} · ${formatCount(sm.uncovered_count, 'uncovered rule', 'uncovered rules')}`} subExtra={sm.locator_count ? `${formatCount(sm.locator_count, 'element', 'elements')} not found` : undefined} attention={sm.attention > 0} testid="hero-attention" />
       </div>
-      {sm.stopped ? <div className="mt-4 rounded-md bg-rework-soft px-3 py-2 text-small text-rework"><span className="font-medium">stopped early</span> {sm.stopped.reason}</div> : null}
+        {/* The one download per run, beside the three numbers so the result and the deliverable share the first screen. */}
+        {/* min-w-0: a grid item may shrink below its content, so a long zip name is cut with an ellipsis and never widens the page. */}
+        <div className="flex min-w-0 flex-col justify-between gap-3 rounded-lg border border-line bg-bg-2 p-4" data-testid="summary-download">
+          {sm.zip ? (
+            <>
+              <div className="min-w-0">
+                <div className="truncate text-body font-medium text-fg" title={sm.zip.name} data-testid="zip-name">{sm.zip.name}</div>
+                <div className="text-small text-fg-2">Playwright framework, <span className="tabular-nums" data-testid="zip-size">{formatSize(sm.zip.size)}</span></div>
+              </div>
+              {/* The page's primary action. On a run that stopped early Resume is the primary, so this one steps back to outline. */}
+              <Button asChild variant={sm.stopped ? 'outline' : 'default'} className="w-full"><a href={api.withToken(sm.zip.href)} data-testid="download-zip" data-primary={sm.stopped ? 'false' : 'true'}><Download className="mr-2 h-4 w-4" /> Download framework</a></Button>
+            </>
+          ) : <div className="text-small text-fg-2" data-testid="no-zip">No framework zip in the run folder.</div>}
+        </div>
+      </div>
+      {/* The stopped-early reason is the run header's line (detail-stopped), on screen whichever tab is open; it is not repeated here. */}
 
       <SubLabel>Reconciliation funnel</SubLabel>
       {!f ? <Empty>No reconciliation on this report.</Empty> : (
@@ -515,7 +548,7 @@ function Summary({ sm, findings, live }: { sm: RunDetailStages['summary']; findi
                   {fd.verdict ? <Badge variant={VERDICT_VARIANT[fd.verdict.verdict]} data-testid="finding-verdict" data-verdict={fd.verdict.verdict} title={fd.verdict.reasons.join(' · ')}>critic: {fd.verdict.verdict}</Badge> : null}
                 </div>
                 <div className="text-small text-fg-2"><span className="font-medium text-fg">Expected</span> {fd.expected}</div>
-                <div className="text-small text-fg-2"><span className="font-medium text-fg">URL at the time</span> <span className="mono">{fd.url}</span>{fd.messages.length ? `; the page said "${fd.messages.join(' | ')}"` : ''}</div>
+                <div className="text-small text-fg-2"><span className="font-medium text-fg">URL at the time</span> <span className="mono break-all">{fd.url}</span>{fd.messages.length ? `; the page said "${fd.messages.join(' | ')}"` : ''}</div>
                 {fd.verdict?.reasons.length ? <div className="mt-1 text-small text-fg-2" data-testid="finding-verdict-reasons">{fd.verdict.reasons.join(' · ')}</div> : null}
               </li>
             ))}
@@ -532,18 +565,13 @@ function Summary({ sm, findings, live }: { sm: RunDetailStages['summary']; findi
               <li key={fd.scenario} className="rounded-md border border-line bg-bg-2 px-4 py-3" data-testid="locator-failure">
                 <div className="font-medium text-fg" data-testid="locator-failure-scenario">{fd.scenario}</div>
                 <div className="text-small text-fg-2"><span className="font-medium text-fg">Element looked for</span> <span data-testid="locator-failure-element">{elementLookedFor(fd.expected)}</span></div>
-                <div className="text-small text-fg-2"><span className="font-medium text-fg">URL at the time</span> <span className="mono">{fd.url}</span>{fd.messages.length ? `; ${fd.messages.join(' | ')}` : ''}</div>
+                <div className="text-small text-fg-2"><span className="font-medium text-fg">URL at the time</span> <span className="mono break-all">{fd.url}</span>{fd.messages.length ? `; ${fd.messages.join(' | ')}` : ''}</div>
               </li>
             ))}
           </ul>
         )}
       </details>
 
-      <div className="mt-6" data-testid="summary-download">
-        {sm.zip ? (
-          <Button asChild variant="outline" className="h-auto min-h-9 max-w-full whitespace-normal py-2 text-left"><a href={api.withToken(sm.zip.href)} data-testid="download-zip"><Download className="mr-1 h-4 w-4" /> Download {sm.zip.name} <span className="ml-1 font-normal text-fg-2">{formatSize(sm.zip.size)}</span></a></Button>
-        ) : <div className="text-small text-fg-2" data-testid="no-zip">No framework zip in the run folder.</div>}
-      </div>
     </>
   );
 }

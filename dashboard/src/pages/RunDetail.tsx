@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { EmptyState } from '@/components/EmptyState';
 import { StatusBadge } from '@/components/StatusBadge';
 import { StageView } from '@/components/StageView';
+import { Tip } from '@/components/Term';
 import { connectGateway, followRun, startCommand, useGateway, type LiveEvent, type LiveRun } from '@/lib/gateway';
 import { resumeCommand, transcribeCommand } from '@/lib/command';
 import { readOverrides } from '@/lib/session-overrides';
@@ -94,11 +95,12 @@ export function RunDetailPage() {
           {detail.legacy ? <Badge variant="neutral">summary only (pre-v2)</Badge> : null}
           {!detail.legacy ? <RunActions run={detail.run} activeRunId={gw.activeRun?.run_id ?? null} socket={gw.socket} /> : null}
         </div>
-        <dl className="grid gap-3 sm:grid-cols-4">
-          <Fact label="started" value={formatDate(h.started_at)} title={formatDateTime(h.started_at)} testid="detail-started" />
-          <Fact label="ended" value={formatDate(h.ended_at)} title={formatDateTime(h.ended_at)} testid="detail-ended" />
-          <Fact label="total cost" value={formatMoney(h.cost.total)} title={`exact: ${exactMoney(h.cost.total)}`} testid="detail-cost" sub={`planner ${formatMoney(h.cost.planner)} · explorer ${formatMoney(h.cost.explorer)} · critic ${formatMoney(h.cost.critic)}${h.cost.repair ? ` · repair ${formatMoney(h.cost.repair)}` : ''}`} />
-          <Fact label="source" value={h.source ?? 'unknown'} testid="detail-source" sub={h.url ? <a href={h.url} target="_blank" rel="noreferrer" className="text-accent hover:underline" data-testid="detail-site-link">{h.url}</a> : undefined} />
+        <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-small text-fg-2" data-testid="detail-meta">
+          <Meta label="Started"><span className="tabular-nums text-fg" data-testid="detail-started">{formatDateTime(h.started_at)}</span></Meta>
+          <Meta label="Ended"><span className="tabular-nums text-fg" data-testid="detail-ended">{formatDateTime(h.ended_at)}</span></Meta>
+          <Meta label="Total cost"><Tip text={`exact: ${exactMoney(h.cost.total)}`}><span className="money font-medium text-fg" data-testid="detail-cost">{formatMoney(h.cost.total)}</span></Tip></Meta>
+          <Meta label="Source"><span className="text-fg" data-testid="detail-source">{h.source ?? 'unknown'}</span></Meta>
+          {h.url ? <div><a href={h.url} target="_blank" rel="noreferrer" className="text-accent hover:underline" data-testid="detail-site-link">{h.url}</a></div> : null}
         </dl>
         {h.stopped_reason ? <div className="rounded-md border border-transparent bg-rework-soft px-3 py-2 text-small text-rework" data-testid="detail-stopped">stopped early: {h.stopped_reason}</div> : null}
         {gw.lastRegenerated && gw.lastRegenerated.reportPath === detail.run.report_path ? (
@@ -271,6 +273,11 @@ function BackLink({ projectId, projectName }: { projectId?: string; projectName?
   );
 }
 
+/** One item of the run header's meta line: a muted label and its value. */
+function Meta({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="flex items-baseline gap-2"><dt>{label}</dt><dd>{children}</dd></div>;
+}
+
 function Fact({ label, value, sub, title, mono, testid }: { label: string; value: string; sub?: React.ReactNode; title?: string; mono?: boolean; testid: string }) {
   return (
     <div className="rounded-lg border border-line bg-bg-1 p-4" title={title}>
@@ -291,18 +298,18 @@ function ScenarioRow({ s }: { s: RunDetailScenario }) {
         <div className="font-medium">{s.name}</div>
         <div className="flex flex-wrap gap-1 text-small text-fg-2">
           {s.feature ? <span>{s.feature}</span> : null}{s.category ? <span>· {s.category}</span> : null}
-          {s.dropped_at ? <span>· dropped at {s.dropped_at}: {s.dropped_reason}</span> : null}
+          {s.dropped_at ? <Tip text={`dropped at ${s.dropped_at}: ${s.dropped_reason ?? ''}`} className="block w-full"><span className="line-clamp-2">dropped at {s.dropped_at}: {s.dropped_reason}</span></Tip> : null}
           {s.incomplete_reason ? <span>· incomplete: {s.incomplete_reason}</span> : null}
           {s.skipped_reason ? <span>· skipped: {s.skipped_reason}</span> : null}
         </div>
       </TableCell>
       <TableCell>
         {s.verdict ? <Badge variant={VERDICT_VARIANT[s.verdict]} data-testid="verdict" data-verdict={s.verdict}>{s.verdict}</Badge> : <span className="text-fg-2">n/a</span>}
-        {s.reasons.length ? <div className="mt-1 max-w-xs text-small text-fg-2">{s.reasons.join(' · ')}</div> : null}
+        {s.reasons.length ? <Tip text={s.reasons.join(' · ')} className="mt-1 block max-w-md"><div className="line-clamp-2 text-small text-fg-2" data-testid="verdict-reasons">{s.reasons.join(' · ')}</div></Tip> : null}
       </TableCell>
       <TableCell><span className={s.repair === 'repaired' ? 'text-pass' : s.repair === 'failed' ? 'text-reject' : 'text-fg-2'} data-testid="repair" data-repair={s.repair}>{repairLabel}</span>{s.repair !== 'none' && s.repair_second ? <div className="text-small text-fg-2">rework to {s.repair_second}</div> : null}</TableCell>
       <TableCell>{s.replay ? <span className={s.replay === 'pass' ? 'text-pass' : s.replay === 'refused' ? 'text-fg-2' : 'text-reject'} data-testid="replay" data-replay={s.replay}>{s.replay}</span> : <span className="text-fg-2">n/a</span>}{s.replay_error ? <div className="max-w-xs truncate text-small text-fg-2" title={s.replay_error}>{s.replay_error}</div> : null}</TableCell>
-      <TableCell>{s.stability ? <span className="mono" data-testid="stability">{s.stability.classification === 'refused' || s.stability.classification === 'skipped' ? <span className="text-fg-2">{s.stability.classification === 'skipped' ? 'not re-run' : 'refused'}</span> : <>{s.stability.passes}/{s.stability.iterations}</>}{s.stability.classification !== 'refused' && s.stability.classification !== 'skipped' && s.stability.pattern ? <span className="ml-1 text-fg-2">{s.stability.pattern}</span> : null}{s.stability.recovered ? <span className="ml-1 text-pass">recovered</span> : null}</span> : <span className="text-fg-2">n/a</span>}</TableCell>
+      <TableCell>{s.stability ? <span className="mono whitespace-nowrap" data-testid="stability">{s.stability.classification === 'refused' || s.stability.classification === 'skipped' ? <span className="text-fg-2">{s.stability.classification === 'skipped' ? 'not re-run' : 'refused'}</span> : <>{s.stability.passes}/{s.stability.iterations}</>}{s.stability.classification !== 'refused' && s.stability.classification !== 'skipped' && s.stability.pattern ? <span className="ml-1 text-fg-2">{s.stability.pattern}</span> : null}{s.stability.recovered ? <span className="ml-1 text-pass">recovered</span> : null}</span> : <span className="text-fg-2">n/a</span>}</TableCell>
       <TableCell><span className={s.shipped ? 'text-pass' : 'text-fg-2'} data-testid="shipped" data-shipped={s.shipped ? 'yes' : 'no'}>{s.shipped ? 'yes' : 'no'}</span></TableCell>
     </TableRow>
   );

@@ -10,8 +10,9 @@ import { duration, exactMoney, formatDate, formatDateTime, formatMoney, pct } fr
  * is an index row column; a legacy row shows "N explored" because a pre-v2
  * record never carried a shipped count. Cost shows 2 decimals with the exact
  * report value in its tooltip, like the cards. Numbers are right aligned in tabular
- * figures. The whole row opens the run; the name is also a real link for
- * the keyboard. On the project page (hideProject) the row shows the last 6
+ * figures. The run's name leads the row and its status sits beside the
+ * numbers, so a long status label never opens a gap before the name. The
+ * whole row opens the run; the name is also a real link for the keyboard. On the project page (hideProject) the row shows the last 6
  * characters of the run id in mono with the full id in a tooltip, and no
  * URL, since the host is the project's.
  */
@@ -22,8 +23,8 @@ export function RunsTable({ runs, hideProject = false }: { runs: RunRow[]; hideP
     <Table data-testid="runs-table">
       <TableHeader>
         <TableRow className="hover:bg-transparent">
-          <TableHead className="w-[200px]">Status</TableHead>
-          <TableHead>{hideProject ? 'Run' : 'Project'}</TableHead>
+          <TableHead className="w-[34%]">{hideProject ? 'Run' : 'Project'}</TableHead>
+          <TableHead>Status</TableHead>
           <TableHead className="text-right"><Term term="shippedPlanned">Shipped / planned</Term></TableHead>
           <TableHead className="text-right"><Term term="cost">Cost</Term></TableHead>
           <TableHead className="text-right"><Term term="flakeRate">Flake rate</Term></TableHead>
@@ -35,7 +36,6 @@ export function RunsTable({ runs, hideProject = false }: { runs: RunRow[]; hideP
       <TableBody>
         {runs.map((r) => (
           <TableRow key={r.id} className="cursor-pointer" data-testid="run-row" data-run-id={r.id} onClick={(e) => { if ((e.target as HTMLElement).closest('a, [data-glossary], [data-tip]')) return; navigate(to(r)); }}>
-            <TableCell><StatusBadge status={r.status} /></TableCell>
             <TableCell>
               {hideProject ? (
                 <Tip asChild text={r.id} mono>
@@ -50,6 +50,7 @@ export function RunsTable({ runs, hideProject = false }: { runs: RunRow[]; hideP
                 </Tip>
               )}
             </TableCell>
+            <TableCell className="whitespace-nowrap"><StatusBadge status={r.status} /></TableCell>
             <TableCell className="text-right"><span className="tabular-nums text-fg" data-testid="shipped-planned">{r.status === 'legacy' ? <Term term="explored">{r.generated} explored</Term> : `${r.shipped === null ? 'n/a' : r.shipped}/${r.planned}`}</span></TableCell>
             <TableCell className="text-right"><Tip text={`exact: ${exactMoney(r.cost_total)}`}><span className="money text-fg" data-testid="cost">{formatMoney(r.cost_total)}</span></Tip></TableCell>
             <TableCell className="text-right"><span className="tabular-nums text-fg" data-testid="flake-rate">{pct(r.flake_rate)}</span></TableCell>
