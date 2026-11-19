@@ -18,6 +18,7 @@ import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 import { newRunId, setLatest } from '../src/agent/output-layout.js';
 import { GLOSSARY } from '../dashboard/src/lib/glossary.js';
+import { RECENT_RUNS_SHOWN, recentRuns } from '../dashboard/src/lib/recent-runs.js';
 
 /** The exact figure the card's money tooltip carries (dashboard/src/lib/utils.ts exactMoney): the API number with float noise beyond 12 significant digits removed. */
 const exactMoney = (v: unknown): string => `$${String(Number(Number(v).toPrecision(12)))}`;
@@ -40,7 +41,7 @@ window.__contrast = function (selectors) {
   return out;
 };`;
 // Redesign v2: the card rows, the sentence, "Open project", the headline and subline, the sidebar's nav, status box and badge.
-const PROJECTS_CONTRAST = ['[data-testid="latest-shipped"]', '[data-testid="shipped"]', '[data-testid="unresolved-findings"]', '[data-testid="spend-month"]', '[data-testid="card-review-row"]', '[data-testid="card-sentence"]', '[data-testid="card-url"]', '[data-testid="runs-count"]', '[data-testid="card-open"]', '[data-testid="coverage-latest"]', '[data-testid="coverage-none"]', '[data-testid="card-status"]', '[data-testid="card-letter"]', '[data-testid="gateway-status"]', '[data-testid="session-spend"]', '[data-testid="model-chip"]', '[data-testid="projects-headline"]', '[data-testid="projects-subline"]', '[data-testid="nav-projects"]', '[data-testid="nav-runs"]', '[data-testid="nav-to-review-count"]', '[data-testid="run-a-test"]', '[data-testid="earlier-note"]', '[data-testid="new-project-open"]', '[data-testid="earlier-row"] [data-glossary="legacy"]', '[data-testid="earlier-host"]'];
+const PROJECTS_CONTRAST = ['[data-testid="latest-shipped"]', '[data-testid="shipped"]', '[data-testid="unresolved-findings"]', '[data-testid="spend-month"]', '[data-testid="card-review-row"]', '[data-testid="card-sentence"]', '[data-testid="card-url"]', '[data-testid="runs-count"]', '[data-testid="card-open"]', '[data-testid="coverage-latest"]', '[data-testid="coverage-none"]', '[data-testid="card-status"]', '[data-testid="card-letter"]', '[data-testid="gateway-status"]', '[data-testid="session-spend"]', '[data-testid="model-chip"]', '[data-testid="projects-headline"]', '[data-testid="projects-subline"]', '[data-testid="nav-projects"]', '[data-testid="nav-runs"]', '[data-testid="nav-to-review-count"]', '[data-testid="run-a-test"]', '[data-testid="earlier-note"]', '[data-testid="new-project-open"]', '[data-testid="earlier-row"] [data-glossary="legacy"]', '[data-testid="earlier-host"]', '[data-testid="recent-runs"] h2', '[data-testid="recent-runs-all"]', '[data-testid="recent-runs"] [data-testid="run-url"]', '[data-testid="recent-runs"] [data-testid="cost"]'];
 const RUNS_CONTRAST = ['[data-testid="cost"]', '[data-testid="flake-rate"]', '[data-testid="duration"]', '[data-testid="run-source"]', '[data-testid="shipped-planned"]', '[data-status="completed"]', '[data-status="stopped"]', '[data-status="empty"]', '[data-status="legacy"]', '[data-testid="toggle-legacy"]', '[data-testid="runs-count"]', 'th [data-glossary="cost"]'];
 
 let pass = 0;
@@ -246,12 +247,26 @@ for (const theme of ['dark', 'light'] as const) {
   const sauceApi = projects.find((p) => p.id === 'saucedemo-com')!.coverage_series as Array<{ covered: number; total: number; percent: number }>;
   const sauceLatest = sauceApi[sauceApi.length - 1]!;
   check(`${theme}: the requirements row reads "${sauceLatest.covered} of ${sauceLatest.total}" from the latest coverage_series entry and the bar width is its percent (${sauceLatest.percent}%)`, /Requirements covered/.test(sauce.text) && sauceCov.text === `${sauceLatest.covered} of ${sauceLatest.total}` && sauceCov.percent === String(sauceLatest.percent) && sauceCov.width === `${sauceLatest.percent}%` && sauceLatest.covered === 3 && sauceLatest.total === 3, JSON.stringify({ sauceCov, sauceLatest }));
-  check(`${theme}: a project without SRS runs says "No document yet" under the same label with an empty track`, /Requirements covered/.test(cards.find((c) => c.id === 'the-internet-herokuapp-com')?.text ?? '') && /No document yet/.test(cards.find((c) => c.id === 'the-internet-herokuapp-com')?.text ?? '') && !/\d+ of \d+/.test(cards.find((c) => c.id === 'the-internet-herokuapp-com')?.text ?? '') && !!(await page.$('[data-project-id="the-internet-herokuapp-com"] [data-testid="coverage-bar-empty"]')));
+  const noDoc = cards.find((c) => c.id === 'the-internet-herokuapp-com')?.text ?? '';
+  check(`${theme}: a project without SRS runs reads "Requirements" and "No document yet" with an empty track, never "covered" and never a count`, /Requirements(?! covered)/.test(noDoc) && !/Requirements covered/.test(noDoc) && /No document yet/.test(noDoc) && !/\d+ of \d+/.test(noDoc) && !!(await page.$('[data-project-id="the-internet-herokuapp-com"] [data-testid="coverage-bar-empty"]')));
   // Redesign v2: equal card heights and "Open project" tops at 1440 and at 1280, no nested interactive element, no horizontal scroll at 390 / 1280 / 1440.
   for (const width of [1440, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     const cardGeometry = await page.$$eval('[data-testid="project-card"]', (els) => els.map((el) => ({ h: el.getBoundingClientRect().height, open: el.querySelector('[data-testid="card-open"]')!.getBoundingClientRect().top })));
     check(`${theme}: at ${width} every card has the same height and "Open project" shares one top (within 1px)`, cardGeometry.length > 1 && cardGeometry.every((g) => Math.abs(g.h - cardGeometry[0]!.h) <= 1 && Math.abs(g.open - cardGeometry[0]!.open) <= 1), JSON.stringify(cardGeometry));
+  }
+  // Wide windows: at most four cards in a row, each a quarter of the row; three cards are never stretched across it. The no-document row stays on one line at the narrowest four-up card.
+  for (const width of [1580, 1976]) {
+    await page.setViewportSize({ width, height: 900 });
+    const wide = await page.evaluate(() => {
+      const grid = document.querySelector('[data-testid="project-grid"]')!.getBoundingClientRect();
+      const cardRects = Array.from(document.querySelectorAll('[data-testid="project-card"]')).map((el) => el.getBoundingClientRect());
+      const none = document.querySelector('[data-testid="coverage-none"]')!;
+      const label = none.parentElement!.firstElementChild!;
+      return { grid: grid.width, widths: cardRects.map((r) => Math.round(r.width)), tops: cardRects.map((r) => Math.round(r.top)), labelH: label.getBoundingClientRect().height, noneH: none.getBoundingClientRect().height, sameLine: Math.abs(label.getBoundingClientRect().top - none.getBoundingClientRect().top) <= 2, hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+    });
+    const quarter = (wide.grid - 60) / 4;
+    check(`${theme}: at ${width} the cards share one row, each is a quarter of the row and at least 300px (three cards are not stretched), "Requirements" and "No document yet" sit on one line, no horizontal scroll`, wide.widths.length === 3 && wide.tops.every((t) => t === wide.tops[0]) && wide.widths.every((w) => Math.abs(w - quarter) <= 1 && w >= 300) && wide.sameLine && wide.labelH < 30 && wide.noneH < 30 && !wide.hscroll, JSON.stringify(wide));
   }
   for (const width of [390, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
@@ -260,7 +275,8 @@ for (const theme of ['dark', 'light'] as const) {
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   const fonts = await page.evaluate(() => ({ number: getComputedStyle(document.querySelector('[data-testid="latest-shipped"]')!).fontFamily, label: getComputedStyle(document.querySelector('[data-testid="card-review-row"]')!).fontFamily, nav: getComputedStyle(document.querySelector('[data-testid="nav-projects"]')!).fontFamily, models: getComputedStyle(document.querySelector('[data-testid="model-chips"]')!).fontFamily }));
-  check(`${theme}: card numbers, card labels and sidebar items render in Plus Jakarta Sans, never Inter or Geist; the model names are Geist Mono`, /Plus Jakarta Sans/.test(fonts.number) && /Plus Jakarta Sans/.test(fonts.label) && /Plus Jakarta Sans/.test(fonts.nav) && !/Inter|Geist/.test(fonts.number + fonts.label + fonts.nav) && /Geist Mono/.test(fonts.models), JSON.stringify(fonts));
+  const interLoaded = await page.evaluate(async () => { await document.fonts.ready; const loaded: string[] = []; document.fonts.forEach((f) => { if (f.status === 'loaded') loaded.push(f.family); }); return document.fonts.check('600 32px "Inter Variable"') && loaded.some((f) => /Inter Variable/.test(f)); });
+  check(`${theme}: card numbers, card labels and sidebar items render in Inter (the bundled file is loaded), never Geist or the retired Plus Jakarta Sans; the model names are Geist Mono`, /^"?Inter Variable/.test(fonts.number) && /^"?Inter Variable/.test(fonts.label) && /^"?Inter Variable/.test(fonts.nav) && !/Jakarta|Geist/.test(fonts.number + fonts.label + fonts.nav) && /Geist Mono/.test(fonts.models) && interLoaded, JSON.stringify({ ...fonts, interLoaded }));
   const header = await page.evaluate(() => ({
     gateway: document.querySelector('[data-testid="gateway-status"]')?.textContent ?? '',
     session: document.querySelector('[data-testid="session-spend"]')?.textContent ?? '',
@@ -294,8 +310,34 @@ for (const theme of ['dark', 'light'] as const) {
     await fresh.close();
   }
 
+  // Recent runs on the Projects page (invariant 86): the newest runs with a report, the API's own rows in its own order.
+  const expectedRecent = recentRuns(apiRuns as Array<{ status: string; id: string }>).map((r) => r.id);
+  const recent = await page.evaluate(() => ({
+    heading: document.querySelector('[data-testid="recent-runs"] h2')?.textContent ?? null,
+    all: document.querySelector('[data-testid="recent-runs-all"]')?.getAttribute('href') ?? null,
+    ids: Array.from(document.querySelectorAll('[data-testid="recent-runs"] [data-testid="run-row"]')).map((r) => r.getAttribute('data-run-id')),
+    heads: Array.from(document.querySelectorAll('[data-testid="recent-runs"] th')).map((h) => h.textContent?.trim()),
+    costs: Array.from(document.querySelectorAll('[data-testid="recent-runs"] [data-testid="cost"]')).map((c) => c.textContent),
+    belowCards: (document.querySelector('[data-testid="recent-runs"]')?.getBoundingClientRect().top ?? 0) > (document.querySelector('[data-testid="project-grid"]')?.getBoundingClientRect().bottom ?? Infinity),
+  }));
+  check(`${theme}: "Recent runs" sits under the cards with the ${expectedRecent.length} newest reported runs in the API's order, no pre-v2 row, the run's name first and its status second, and an "All runs" link to /runs`, recent.heading === 'Recent runs' && recent.all === '/runs' && expectedRecent.length === Math.min(RECENT_RUNS_SHOWN, apiRuns.filter((r) => r.status !== 'legacy').length) && JSON.stringify(recent.ids) === JSON.stringify(expectedRecent) && !recent.ids.some((id) => String(id).startsWith('legacy-')) && recent.heads[0] === 'Project' && recent.heads[1] === 'Status' && recent.belowCards, JSON.stringify(recent));
+  check(`${theme}: each Recent runs cost is the index row's cost_total at 2 decimals`, JSON.stringify(recent.costs) === JSON.stringify(expectedRecent.map((id) => `$${Number(apiRuns.find((r) => r.id === id)!.cost_total).toFixed(2)}`)), JSON.stringify(recent.costs));
+  if (theme === 'dark') {
+    // The rule itself: a pre-v2 row among the newest is left out and does not shorten the list; the order is kept; never more than RECENT_RUNS_SHOWN.
+    const mixed = [{ id: 'legacy-a', status: 'legacy' }, { id: 'r1', status: 'completed' }, { id: 'r2', status: 'stopped' }, { id: 'legacy-b', status: 'legacy' }, { id: 'r3', status: 'empty' }, { id: 'r4', status: 'failed' }, { id: 'r5', status: 'completed' }, { id: 'r6', status: 'completed' }];
+    check('recentRuns: pre-v2 rows are left out, the order is the API\'s, at most five rows, and an all-legacy list gives none', recentRuns(mixed).map((r) => r.id).join(',') === 'r1,r2,r3,r4,r5' && RECENT_RUNS_SHOWN === 5 && recentRuns([{ id: 'legacy-a', status: 'legacy' }]).length === 0 && recentRuns([]).length === 0);
+    // A failed runs request is named in its own section and never hides the cards (a failure must not read as "no runs").
+    const failing = await context.newPage();
+    await failing.route('**/api/runs?**', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'index unavailable' }) }));
+    await failing.goto(`${base}/#token=${TOKEN}`, { waitUntil: 'networkidle' });
+    await failing.waitForSelector('[data-testid="project-card"]');
+    const failed = await failing.evaluate(() => ({ error: document.querySelector('[data-testid="recent-runs-error"]')?.textContent ?? null, section: !!document.querySelector('[data-testid="recent-runs"]'), cards: document.querySelectorAll('[data-testid="project-card"]').length }));
+    check('a failed runs request shows "Recent runs could not be loaded: <the API message>" and the cards still render', /^Recent runs could not be loaded: /.test(failed.error ?? '') && /index unavailable/.test(failed.error ?? '') && !failed.section && failed.cards === 3, JSON.stringify(failed));
+    await failing.close();
+  }
+
   // Runs table.
-  await page.click('a[href="/runs"]');
+  await page.click('[data-testid="nav-runs"]');
   await page.waitForSelector('[data-testid="run-row"]');
   // Pre-v2 summaries are hidden behind a visible toggle, off by default; the total count stays on screen.
   const legacyTotal = apiRuns.filter((r) => r.status === 'legacy').length;

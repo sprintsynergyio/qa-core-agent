@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FolderOpen } from 'lucide-react';
-import { api, ApiError, type ProjectCard, type ProjectTotals } from '@/lib/api';
+import { api, ApiError, type ProjectCard, type ProjectTotals, type RunRow } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/EmptyState';
 import { NewProjectDialog } from '@/components/NewProjectDialog';
 import { ProjectsSkeleton } from '@/components/Skeleton';
+import { RunsTable } from '@/components/RunsTable';
 import { LABEL } from '@/components/StatusBadge';
 import { Term, Tip } from '@/components/Term';
 import { hostOf } from '@/lib/utils';
 import { exactMoney, formatCount, formatDate, formatDateTime, formatMoney } from '@/lib/format';
+import { RECENT_RUNS_FETCH, recentRuns } from '@/lib/recent-runs';
 
 /**
  * Projects (redesign v2, docs/ui/redesign-v2/projects-target-*.png): a
@@ -24,6 +26,11 @@ import { exactMoney, formatCount, formatDate, formatDateTime, formatMoney } from
  * the Unassigned record are not cards. One muted line under the grid counts
  * them and a "Show" link reveals a compact table, so nothing is hidden
  * without a count and nothing is deleted from the data.
+ *
+ * Under the cards, "Recent runs" lists the newest runs that have a report
+ * (the same index rows and the same table as the Runs page, pre-v2 summaries
+ * left out as that page does by default), so the first screen shows the
+ * agent's latest work and not only the totals.
  */
 
 const UNASSIGNED = 'unassigned';
@@ -44,11 +51,17 @@ export function ProjectsPage({ refreshKey }: { refreshKey: number }) {
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   const [showEarlier, setShowEarlier] = useState(false);
+  const [runs, setRuns] = useState<RunRow[] | null>(null);
+  const [runsError, setRunsError] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
     api.projectsWithTotals()
       .then((r) => { if (live) { setProjects(r.projects); setTotals(r.totals); setError(null); } })
       .catch((e: unknown) => { if (live) setError(e instanceof ApiError && e.status === 401 ? 'Unauthorized: add #token=<QA_CORE_GATEWAY_TOKEN> to the URL.' : (e as Error).message); });
+    // The runs list is its own request: a failure there is named in its own section and never hides the cards.
+    api.runs({ limit: RECENT_RUNS_FETCH })
+      .then((r) => { if (live) { setRuns(r); setRunsError(null); } })
+      .catch((e: unknown) => { if (live) setRunsError((e as Error).message); });
     return () => { live = false; };
   }, [refreshKey, reload]);
 
@@ -79,7 +92,7 @@ export function ProjectsPage({ refreshKey }: { refreshKey: number }) {
     <div className="flex flex-col gap-8">
       {header}
       {active.length ? (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-testid="project-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+        <div className="grid gap-5" data-testid="project-grid" style={{ gridTemplateColumns: PROJECT_GRID_COLUMNS }}>
           {active.map((p) => <ProjectCardView key={p.id} p={p} />)}
         </div>
       ) : (
@@ -87,6 +100,7 @@ export function ProjectsPage({ refreshKey }: { refreshKey: number }) {
           Every project so far is a pre-v2 summary or has no runs. Start a run from Run a test to get the first full report.
         </EmptyState>
       )}
+      <RecentRuns runs={runs} error={runsError} />
       {earlier.length ? (
         <div className="flex flex-col gap-3" data-testid="earlier-experiments">
           <p className="text-small text-fg-2" data-testid="earlier-note">
@@ -99,6 +113,34 @@ export function ProjectsPage({ refreshKey }: { refreshKey: number }) {
     </div>
   );
 }
+
+/**
+ * "Recent runs": the newest runs with a report, in the Runs page's own table.
+ * A failed request says so here; while loading, and when no run has a report
+ * yet, the section is not drawn (the cards' own empty state covers that).
+ */
+function RecentRuns({ runs, error }: { runs: RunRow[] | null; error: string | null }) {
+  if (error) return <p className="text-small text-fg-2" data-testid="recent-runs-error">Recent runs could not be loaded: {error}</p>;
+  if (runs === null) return null;
+  const rows = recentRuns(runs);
+  if (rows.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-3" data-testid="recent-runs">
+      <div className="flex items-baseline justify-between gap-4">
+        <h2 className="text-heading font-semibold text-fg">Recent runs</h2>
+        <Link to="/runs" className="rounded-sm text-body font-medium text-brand underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" data-testid="recent-runs-all">All runs →</Link>
+      </div>
+      <RunsTable runs={rows} />
+    </section>
+  );
+}
+
+/**
+ * The card grid: as many columns as fit at 300px or wider, never more than
+ * four (three 20px gaps). auto-fill keeps the empty tracks, so one or two
+ * cards stay card-sized on a wide window and are never stretched across it.
+ */
+export const PROJECT_GRID_COLUMNS = 'repeat(auto-fill, minmax(max(300px, calc((100% - 60px) / 4)), 1fr))';
 
 /**
  * The headline words from the server totals (standing rule 3: the page only
@@ -133,7 +175,7 @@ function ProjectCardView({ p }: { p: ProjectCard }) {
   return (
     <article className="card-lift relative flex h-full flex-col gap-5 rounded-lg border border-line bg-bg-1 p-6 text-fg" data-testid="project-card" data-project-id={p.id} data-href={href}>
       <div className="flex items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-nav-active text-subheading font-semibold text-nav-active-fg" aria-hidden="true" data-testid="card-letter">{letter}</span>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-brand-soft text-subheading font-semibold text-brand" aria-hidden="true" data-testid="card-letter">{letter}</span>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h2 className="min-w-0 truncate text-subheading font-semibold" title={p.name}>
@@ -151,7 +193,7 @@ function ProjectCardView({ p }: { p: ProjectCard }) {
         {latest === null
           ? <div className="text-body font-medium text-fg-2" data-testid="latest-shipped-missing">latest run is a pre-v2 summary</div>
           : (<div className="flex items-baseline gap-2">
-              <span className="money text-title font-semibold" data-testid="latest-shipped">{latest}</span>
+              <span className="money text-display font-semibold" data-testid="latest-shipped">{latest}</span>
               <span className="text-body font-medium">{formatCount(latest, 'test', 'tests').replace(/^\d+ /, '')} ready</span>
             </div>)}
         <div className="mt-1 text-small text-fg-2" data-testid="card-sentence">
@@ -171,10 +213,10 @@ function ProjectCardView({ p }: { p: ProjectCard }) {
         </div>
         <div className="flex flex-col gap-2" data-testid="card-coverage">
           <div className="flex items-center justify-between gap-3">
-            <Term term="coverage" className="relative z-10">Requirements covered</Term>
+            <Term term="coverage" className="relative z-10">{cov ? 'Requirements covered' : 'Requirements'}</Term>
             {cov
               ? <span className="font-medium" data-testid="coverage-latest">{cov.covered} of {cov.total}</span>
-              : <span className="text-fg-2" data-testid="coverage-none">No document yet</span>}
+              : <span className="whitespace-nowrap text-fg-2" data-testid="coverage-none">No document yet</span>}
           </div>
           <div className="h-2 overflow-hidden rounded-sm bg-bg-3" role={cov ? 'progressbar' : undefined} aria-label={cov ? 'Requirements covered' : undefined} aria-valuemin={cov ? 0 : undefined} aria-valuemax={cov ? 100 : undefined} aria-valuenow={cov ? cov.percent : undefined} data-testid={cov ? 'coverage-bar' : 'coverage-bar-empty'} data-percent={cov ? cov.percent : undefined}>
             {cov ? <div className="h-full rounded-sm bg-brand" style={{ width: `${cov.percent}%` }} data-testid="coverage-bar-fill" /> : null}

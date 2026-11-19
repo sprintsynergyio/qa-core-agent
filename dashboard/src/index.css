@@ -23,18 +23,18 @@
    both blocks; smoke-dashboard measures a sample live). */
 :root {
   --bg-0: 216 19% 5.3%;
-  --bg-1: 214 19% 7.3%;
-  --bg-2: 213 20% 10.8%;
-  --bg-3: 215 18% 13.3%;
-  --line: 215 18% 13.3%;
-  --line-strong: 214 17% 18%;
+  --bg-1: 215 18% 9%;
+  --bg-2: 214 18% 12.5%;
+  --bg-3: 215 17% 16%;
+  --line: 215 16% 15.5%;
+  --line-strong: 214 15% 22%;
   --text: 213 24% 92.7%;
   --text-2: 215 13% 65.1%;
   --text-3: 214 11% 58.6%;
   --accent: 173 68% 61.2%;
   --brand: 173 68% 61.2%;
   --brand-fg: 216 19% 5.3%;
-  --nav-active-bg: 213 20% 10.8%;
+  --nav-active-bg: 214 18% 12.5%;
   --nav-active-fg: 213 24% 92.7%;
   --pass: 153 72% 66.9%;
   --rework: 40 90% 62%;
@@ -75,7 +75,7 @@
   /* Every number on the dashboard lines up: tabular figures everywhere, in both families. */
   html { font-variant-numeric: tabular-nums; }
   body { @apply bg-bg-0 text-fg font-sans text-body antialiased; }
-  /* Numbers, money included, are Plus Jakarta Sans with tabular figures; .mono is Geist Mono at 13px for run ids, commands and code only. */
+  /* Numbers, money included, are Inter with tabular figures; .mono is Geist Mono at 13px for run ids, commands and code only. */
   .money { @apply font-sans tabular-nums; }
   .mono { @apply font-mono text-small; }
   /* A visible focus ring on anything focusable that does not draw its own. */

@@ -27,6 +27,8 @@ import { createApiHandler } from '../src/server/api.js';
 import { buildRunDetail } from '../src/server/run-detail.js';
 import { newRunId } from '../src/agent/output-layout.js';
 import { appendRunEvent } from '../src/server/events.js';
+import { defaultStage, stageForKey, STAGE_ORDER, type StageTabKey } from '../dashboard/src/lib/stage-tabs.js';
+import { formatDateTime } from '../dashboard/src/lib/format.js';
 
 let pass = 0;
 let fail = 0;
@@ -435,12 +437,72 @@ if (d.status === 200 && d.body.legacy === false) {
   check('SV. page: verify panel shows replay pass per scenario, the stored stability patterns, recovered count and stabilizer cost', JSON.stringify(rendered.verify.replayRows) === JSON.stringify(['yes', 'yes']) && JSON.stringify(rendered.verify.patterns) === JSON.stringify(['PPP', 'PFP']) && rendered.verify.recovered === '1' && rendered.verify.stabilizerCost === '<$0.01', JSON.stringify(rendered.verify));
   check('SW. page: rule coverage shows covered of total and the considered-not-automated list', rendered.coverage.covered === '1' && rendered.coverage.uncovered === '1' && /R2/.test(rendered.coverage.list) && /Lockout after 5 failed logins/.test(rendered.coverage.list) && /not-planned/.test(rendered.coverage.list), JSON.stringify(rendered.coverage));
   check('SX. page: the finding card carries its Critic verdict, sits inside the Summary panel, and exactly one download button exists', rendered.findingVerdict === 'reject' && rendered.findingsInSummary && rendered.downloads === 1 && rendered.downloadHref.includes('saucedemo-automation-framework.zip') && rendered.downloadHref.includes(`token=${TOKEN}`), JSON.stringify({ v: rendered.findingVerdict, inSummary: rendered.findingsInSummary, downloads: rendered.downloads, href: rendered.downloadHref }));
-  const yBefore = await page.evaluate(() => window.scrollY);
+  // Invariant 86: the rail is a tab list. A finished run opens on Summary; all six panels stay in the document and one is shown.
+  const tabsOf = () => page.evaluate(() => ({
+    active: document.querySelector('[data-testid="stage-view"]')?.getAttribute('data-active-stage') ?? null,
+    list: document.querySelector('[data-testid="stage-rail"]')?.getAttribute('role') ?? null,
+    selected: Array.from(document.querySelectorAll('[data-testid="rail-item"]')).filter((r) => r.getAttribute('aria-selected') === 'true').map((r) => r.getAttribute('data-stage')),
+    tabRoles: Array.from(document.querySelectorAll('[data-testid="rail-item"]')).every((r) => r.getAttribute('role') === 'tab' && r.getAttribute('aria-controls') === `stage-${r.getAttribute('data-stage')}` && r.id === `stage-tab-${r.getAttribute('data-stage')}`),
+    panelRoles: Array.from(document.querySelectorAll('[data-testid="stage-panel"]')).every((p) => p.getAttribute('role') === 'tabpanel' && p.getAttribute('aria-labelledby') === `stage-tab-${p.getAttribute('data-stage')}`),
+    shown: Array.from(document.querySelectorAll('[data-testid="stage-panel"]')).filter((p) => !(p as HTMLElement).hidden && p.getBoundingClientRect().height > 0).map((p) => p.getAttribute('data-stage')),
+    inDocument: document.querySelectorAll('[data-testid="stage-panel"]').length,
+    focused: document.activeElement?.getAttribute('data-stage') ?? null,
+  }));
+  // No rail item has been clicked on this page yet, so this is the state the page opens in.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const opened = await tabsOf();
+  check('SY. page: a finished run opens on Summary: the rail is a tab list, only the Summary tab is selected and only its panel is shown, and all six panels are in the document', opened.active === 'summary' && opened.list === 'tablist' && JSON.stringify(opened.selected) === '["summary"]' && JSON.stringify(opened.shown) === '["summary"]' && opened.inDocument === 6 && opened.tabRoles && opened.panelRoles, JSON.stringify(opened));
+  // The first screen is the result: the three numbers and the one download are on screen before any scroll (the page used to open on Discovery, with the result a dozen screens down).
+  const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
+  // No named helper inside evaluate: tsx would wrap it in __name, which does not exist in the page.
+  const firstScreen = await page.evaluate(() => ({
+    scrollY: window.scrollY,
+    shipped: document.querySelector('[data-testid="hero-shipped"]')?.getBoundingClientRect().bottom ?? Infinity,
+    cost: document.querySelector('[data-testid="hero-cost"]')?.getBoundingClientRect().bottom ?? Infinity,
+    attention: document.querySelector('[data-testid="hero-attention"]')?.getBoundingClientRect().bottom ?? Infinity,
+    download: document.querySelector('[data-testid="download-zip"]')?.getBoundingClientRect().bottom ?? Infinity,
+    funnelTop: document.querySelector('[data-testid="funnel"]')?.getBoundingClientRect().top ?? -1,
+    name: document.querySelector('[data-testid="summary-download"] [data-testid="zip-name"]')?.textContent ?? null,
+    size: document.querySelector('[data-testid="summary-download"] [data-testid="zip-size"]')?.textContent ?? null,
+    button: document.querySelector('[data-testid="summary-download"] [data-testid="download-zip"]')?.textContent?.trim() ?? null,
+    inSummary: !!document.querySelector('[data-stage="summary"] [data-testid="summary-download"]'),
+  }));
+  check(`SY1. page: on open, with no scroll, the three summary numbers and the Download framework button are inside the first screen (${viewport.height}px), above the funnel`, firstScreen.scrollY === 0 && [firstScreen.shipped, firstScreen.cost, firstScreen.attention, firstScreen.download].every((b) => b > 0 && b <= viewport.height) && firstScreen.download < firstScreen.funnelTop, JSON.stringify(firstScreen));
+  const zipArtifact = (d.body.artifacts as Array<{ name: string; kind: string }>).find((a) => /\.zip$/.test(a.name));
+  check('SY2. page: the download tile names the zip in the run folder and its size, the button reads "Download framework", and it is the Summary panel\'s (still one download per run)', firstScreen.name === zipArtifact?.name && /\d/.test(firstScreen.size ?? '') && firstScreen.button === 'Download framework' && firstScreen.inSummary && rendered.downloads === 1, JSON.stringify({ name: firstScreen.name, size: firstScreen.size, button: firstScreen.button, artifact: zipArtifact?.name }));
+  const walked: Array<{ stage: string; shown: Array<string | null>; selected: Array<string | null> }> = [];
+  for (const k of STAGE_ORDER) {
+    await page.click(`[data-testid="rail-item"][data-stage="${k}"]`);
+    const t = await tabsOf();
+    walked.push({ stage: k, shown: t.shown, selected: t.selected });
+  }
+  check('SY3. page: clicking a rail item shows that stage\'s panel and only that one, for each of the six stages', walked.every((w) => JSON.stringify(w.shown) === JSON.stringify([w.stage]) && JSON.stringify(w.selected) === JSON.stringify([w.stage])), JSON.stringify(walked));
+  // The last click left Summary selected and focused. Arrow keys, Home and End move along the list, wrapping at the ends.
+  const keyed: Array<{ key: string; active: string | null; focused: string | null }> = [];
+  for (const key of ['ArrowRight', 'ArrowRight', 'End', 'ArrowLeft', 'Home']) {
+    await page.keyboard.press(key);
+    const t = await tabsOf();
+    keyed.push({ key, active: t.active, focused: t.focused });
+  }
+  check('SY4. page: ArrowRight from Summary wraps to Discovery then Plan, End goes to Summary, ArrowLeft to Verify, Home to Discovery; focus follows the selection', JSON.stringify(keyed.map((k) => k.active)) === JSON.stringify(['discovery', 'plan', 'summary', 'verify', 'discovery']) && keyed.every((k) => k.focused === k.active), JSON.stringify(keyed));
   await page.click('[data-testid="rail-item"][data-stage="summary"]');
-  await page.waitForTimeout(600);
-  const yAfter = await page.evaluate(() => window.scrollY);
-  const summaryTop = await page.evaluate(() => document.getElementById('stage-summary')!.getBoundingClientRect().top);
-  check('SY. page: clicking a rail item scrolls to its panel', yAfter > yBefore && summaryTop >= 0 && summaryTop < 120, JSON.stringify({ yBefore, yAfter, summaryTop }));
+  // The rule itself (lib/stage-tabs.ts): a finished run opens on Summary whatever the statuses; a live run follows the pipeline.
+  const stagesWith = (statuses: string[]): Record<StageTabKey, { status: string }> => Object.fromEntries(STAGE_ORDER.map((k, n) => [k, { status: statuses[n]! }])) as Record<StageTabKey, { status: string }>;
+  check('SY5. defaultStage: finished is summary; live is the running stage, else the last started, else discovery. stageForKey ignores other keys',
+    defaultStage(stagesWith(['done', 'done', 'done', 'warning', 'done', 'attention']), false) === 'summary'
+    && defaultStage(stagesWith(['pending', 'pending', 'pending', 'pending', 'pending', 'pending']), false) === 'summary'
+    && defaultStage(stagesWith(['done', 'done', 'running', 'pending', 'pending', 'pending']), true) === 'explore'
+    && defaultStage(stagesWith(['done', 'done', 'done', 'pending', 'pending', 'pending']), true) === 'explore'
+    && defaultStage(stagesWith(['pending', 'pending', 'pending', 'pending', 'pending', 'pending']), true) === 'discovery'
+    && defaultStage(stagesWith(['running', 'pending', 'pending', 'pending', 'pending', 'pending']), true) === 'discovery'
+    && stageForKey('summary', 'Enter') === null && stageForKey('summary', 'a') === null && stageForKey('discovery', 'ArrowLeft') === 'summary');
+  // The run header is one line of the report's own values: start and end as full date and time, the total at 2 decimals with the exact value in its tooltip.
+  const meta = await page.evaluate(() => ({ started: document.querySelector('[data-testid="detail-started"]')?.textContent ?? null, ended: document.querySelector('[data-testid="detail-ended"]')?.textContent ?? null, cost: document.querySelector('[data-testid="detail-cost"]')?.textContent ?? null, costTip: document.querySelector('[data-testid="detail-cost"]')?.parentElement?.getAttribute('data-tip') ?? null, source: document.querySelector('[data-testid="detail-source"]')?.textContent ?? null, oneLine: (document.querySelector('[data-testid="detail-meta"]')?.getBoundingClientRect().height ?? 99) < 30 }));
+  const hdr = d.body.header as { started_at: string | null; ended_at: string | null; source: string | null; cost: { total: number } };
+  check('SY6. page: the header line reads the report\'s start and end as full date and time, the total cost at 2 decimals with the exact value in the tooltip, and the source', meta.started === formatDateTime(hdr.started_at) && meta.ended === formatDateTime(hdr.ended_at) && meta.cost === `$${hdr.cost.total.toFixed(2)}` && /^exact: \$/.test(meta.costTip ?? '') && meta.source === (hdr.source ?? 'unknown') && meta.oneLine, JSON.stringify(meta));
+  // Long Critic notes show two lines in the table and the whole text in the tooltip; nothing is cut from the data.
+  const notes = await page.evaluate(() => Array.from(document.querySelectorAll('[data-testid="verdict-reasons"]')).map((n) => ({ text: n.textContent ?? '', tip: n.parentElement?.getAttribute('data-tip') ?? null, clamp: n.classList.contains('line-clamp-2') })));
+  check('SY7. page: each scenario row\'s Critic notes are clamped to two lines with the full text in the tooltip', notes.length > 0 && notes.every((n) => n.clamp && n.tip === n.text && n.text.length > 0), JSON.stringify(notes.slice(0, 2)));
   for (const theme of ['dark', 'light'] as const) {
     await page.evaluate((t) => { document.documentElement.classList.toggle('light', t === 'light'); localStorage.setItem('qa-core.theme', t); }, theme);
     await page.waitForTimeout(150);

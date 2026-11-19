@@ -45,7 +45,9 @@ export function SettingsPage() {
           <span className="text-small text-fg-2">default from the gateway, and this tab's session override</span>
           <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={clearOverrides} disabled={overrideCount === 0} data-testid="clear-overrides">Clear session overrides{overrideCount ? ` (${overrideCount})` : ''}</Button>
         </div>
-        <table className="mt-4 w-full text-body" data-testid="run-settings-table">
+        {/* On a narrow window the table scrolls inside its own box; the page itself never scrolls sideways. */}
+        <div className="mt-4 overflow-x-auto" data-testid="run-settings-scroll">
+        <table className="w-full text-body" data-testid="run-settings-table">
           <thead><tr className="h-9 text-left text-caption font-medium text-fg-3"><th className="pr-3 font-medium">Setting</th><th className="pr-3 font-medium">Gateway default</th><th className="pr-3 font-medium">Session override</th></tr></thead>
           <tbody>
             {settings.run_settings.map((s) => (
@@ -62,6 +64,7 @@ export function SettingsPage() {
             ))}
           </tbody>
         </table>
+        </div>
         <p className="mt-2 text-small text-fg-2">An override travels with each command as the same QA_CORE_* name the CLI reads and is applied for that run only. It is never written to disk or to the gateway's environment.</p>
       </section>
     </div>

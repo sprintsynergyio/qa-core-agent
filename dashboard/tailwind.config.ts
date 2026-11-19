@@ -4,8 +4,8 @@ import animate from 'tailwindcss-animate';
 // Design tokens (PR F, part 1). Values live as CSS variables in
 // src/index.css so both themes share the same class names. Fonts come from
 // the bundled @fontsource-variable packages (imported in src/main.tsx), never
-// a CDN: Plus Jakarta Sans for all UI text and all numbers (tabular figures
-// on), Geist Mono only for run ids, commands and code.
+// a CDN: Inter for all UI text and all numbers (tabular figures on), Geist
+// Mono only for run ids, commands and code.
 //
 // Type scale (design system, invariant 68): exactly seven sizes, replacing
 // Tailwind's defaults entirely (theme.fontSize, not extend), so no page can
@@ -28,7 +28,7 @@ export default {
     borderRadius: { none: '0', sm: '6px', DEFAULT: '8px', md: '8px', lg: '12px', full: '9999px' },
     extend: {
       fontFamily: {
-        sans: ['Plus Jakarta Sans Variable', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'Segoe UI', 'Roboto', 'sans-serif'],
+        sans: ['Inter Variable', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'Segoe UI', 'Roboto', 'sans-serif'],
         mono: ['Geist Mono Variable', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       colors: {
@@ -46,7 +46,8 @@ export default {
         cost: { DEFAULT: 'hsl(var(--cost))', soft: 'hsl(var(--cost) / 0.12)' },
       },
       boxShadow: { lift: 'var(--shadow-lift)' },
-      maxWidth: { content: '1280px' },
+      // The content column: wide enough for four project cards in a row, the same on every page.
+      maxWidth: { content: '1600px' },
     },
   },
   plugins: [animate],

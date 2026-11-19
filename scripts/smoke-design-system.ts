@@ -9,7 +9,7 @@
  *   (b) live: every route and the New project dialog, in both themes at
  *       1440: every visible element with its own text has a font-size in
  *       {12, 13, 14, 16, 18, 24, 32}, a weight in {400, 500, 600} and the
- *       family Plus Jakarta Sans or Geist Mono; a size-by-route table is
+ *       family Inter or Geist Mono; a size-by-route table is
  *       printed
  *   (c) formatter: formatMoney, formatCount and formatDate under a browser
  *       locale of en-US and of de-DE render the same strings
@@ -57,6 +57,10 @@ for (const f of walk(srcDir)) {
 }
 check(`A. static scan of dashboard/src: no arbitrary text / tracking / leading, no bold weight, no default or old size name, no numeric fontSize, no rounded-xl, no toLocale outside format.ts, no "?? 0" in format.ts (${walk(srcDir).length} files)`, violations.length === 0, violations.slice(0, 10).join('; '));
 const tw = fs.readFileSync(path.join(repo, 'dashboard', 'tailwind.config.ts'), 'utf8');
+const pkg = fs.readFileSync(path.join(repo, 'dashboard', 'package.json'), 'utf8');
+const mainTsx = fs.readFileSync(path.join(repo, 'dashboard', 'src', 'main.tsx'), 'utf8');
+const retired = [...walk(srcDir), path.join(srcDir, 'index.css'), path.join(repo, 'dashboard', 'tailwind.config.ts'), path.join(repo, 'dashboard', 'package.json')].filter((f) => /jakarta/i.test(fs.readFileSync(f, 'utf8'))).map((f) => path.relative(repo, f));
+check('A4. the UI face is Inter, bundled: tailwind fontFamily.sans starts with "Inter Variable", main.tsx imports @fontsource-variable/inter and geist-mono, package.json lists both, and nothing in dashboard/ names the retired face', /sans: \['Inter Variable',/.test(tw) && /mono: \['Geist Mono Variable',/.test(tw) && /import '@fontsource-variable\/inter';/.test(mainTsx) && /import '@fontsource-variable\/geist-mono';/.test(mainTsx) && /"@fontsource-variable\/inter"/.test(pkg) && /"@fontsource-variable\/geist-mono"/.test(pkg) && retired.length === 0, retired.join(', '));
 check('A2. the tailwind config defines exactly the seven sizes as the whole theme.fontSize (not extend), and no xl radius', /theme:\s*\{\s*fontSize:\s*\{/.test(tw) && ['display', 'title', 'heading', 'subheading', 'body', 'small', 'caption'].every((k) => new RegExp(`\\b${k}: \\['`).test(tw)) && (tw.match(/: \['\d+px', \{ lineHeight/g) ?? []).length === 7 && !/xl:/.test(tw));
 const utils = fs.readFileSync(path.join(repo, 'dashboard', 'src', 'lib', 'utils.ts'), 'utf8');
 check('A3. the seven names are registered with tailwind-merge in lib/utils.ts', /'font-size': \[\{ text: \['display', 'title', 'heading', 'subheading', 'body', 'small', 'caption'\] \}\]/.test(utils));
@@ -125,13 +129,15 @@ check('B0. gateway boots on the fixture root', /listening on http/.test(gwLog), 
 const base = `http://127.0.0.1:${PORT}`;
 
 /* ─── (b) live ─── */
-const ROUTES: Array<{ name: string; path: string; dialog?: boolean }> = [
+// The run page shows one stage panel at a time (invariant 86), so it is scanned once per tab: Summary is the one it opens on, the other five are clicked.
+const ROUTES: Array<{ name: string; path: string; dialog?: boolean; tab?: string }> = [
   { name: 'projects', path: '/' }, { name: 'project', path: `/projects/${slug}` }, { name: 'runs', path: '/runs' }, { name: 'run-44cb3d', path: `/runs/${run6}` },
+  ...['discovery', 'plan', 'explore', 'review', 'verify'].map((tab) => ({ name: `run-44cb3d ${tab}`, path: `/runs/${run6}`, tab })),
   { name: 'findings', path: '/findings' }, { name: 'coverage', path: '/coverage' }, { name: 'terminal', path: '/terminal' }, { name: 'settings', path: '/settings' }, { name: 'new-project-dialog', path: '/', dialog: true },
 ];
 const SIZES = new Set([12, 13, 14, 16, 18, 24, 32]);
 const WEIGHTS = new Set([400, 500, 600]);
-const FAMILIES = ['Plus Jakarta Sans Variable', 'Geist Mono Variable'];
+const FAMILIES = ['Inter Variable', 'Geist Mono Variable'];
 const browser = await chromium.launch({ headless: true });
 const tableLines: string[] = [];
 for (const theme of ['light', 'dark'] as const) {
@@ -145,6 +151,7 @@ for (const theme of ['light', 'dark'] as const) {
     await page.goto(`${base}${r.path}#token=${TOKEN}`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
     if (r.dialog) { await page.click('[data-testid="new-project-open"]'); await page.waitForSelector('[data-testid="new-project-dialog"]'); await page.waitForTimeout(200); }
+    if (r.tab) { await page.click(`[data-testid="rail-item"][data-stage="${r.tab}"]`); await page.waitForSelector(`[data-testid="stage-panel"][data-stage="${r.tab}"]:not([hidden])`); await page.waitForTimeout(150); }
     const scan = await page.evaluate(() => {
       const sizes: Record<string, number> = {}; const weights: Record<string, number> = {}; const bad: string[] = [];
       for (const el of Array.from(document.querySelectorAll('body *'))) {
@@ -153,16 +160,61 @@ for (const theme of ['light', 'dark'] as const) {
         if (rect.width === 0 || rect.height === 0 || cs.visibility === 'hidden' || cs.display === 'none') continue;
         const size = Math.round(parseFloat(cs.fontSize)); const weight = Number(cs.fontWeight); const family = cs.fontFamily.split(',')[0]!.replace(/"/g, '');
         sizes[size] = (sizes[size] ?? 0) + 1; weights[weight] = (weights[weight] ?? 0) + 1;
-        const okSize = [12, 13, 14, 16, 18, 24, 32].includes(size); const okWeight = [400, 500, 600].includes(weight); const okFamily = ['Plus Jakarta Sans Variable', 'Geist Mono Variable'].includes(family);
+        const okSize = [12, 13, 14, 16, 18, 24, 32].includes(size); const okWeight = [400, 500, 600].includes(weight); const okFamily = ['Inter Variable', 'Geist Mono Variable'].includes(family);
         if (!okSize || !okWeight || !okFamily) bad.push(`${el.tagName.toLowerCase()}${el.getAttribute('data-testid') ? '[' + el.getAttribute('data-testid') + ']' : ''} ${size}px/${weight}/${family} "${(el.textContent ?? '').trim().slice(0, 30)}"`);
       }
       return { sizes, weights, bad, hscroll: document.documentElement.scrollWidth > document.documentElement.clientWidth };
     });
     const sizeLine = Object.entries(scan.sizes).sort((a, b) => Number(a[0]) - Number(b[0])).map(([k, v]) => `${k}px:${v}`).join(' ');
     tableLines.push(`${theme.padEnd(5)} ${r.name.padEnd(19)} ${sizeLine}  weights ${Object.entries(scan.weights).map(([k, v]) => `${k}:${v}`).join(' ')}`);
-    check(`B. ${theme} ${r.name}: every visible text element is one of the 7 sizes, one of the 3 weights, in Plus Jakarta Sans or Geist Mono; no horizontal scroll`, scan.bad.length === 0 && !scan.hscroll && Object.keys(scan.sizes).every((k) => SIZES.has(Number(k))) && Object.keys(scan.weights).every((k) => WEIGHTS.has(Number(k))), scan.bad.slice(0, 6).join(' | ') + (scan.hscroll ? ' hscroll' : ''));
+    check(`B. ${theme} ${r.name}: every visible text element is one of the 7 sizes, one of the 3 weights, in Inter or Geist Mono; no horizontal scroll`, scan.bad.length === 0 && !scan.hscroll && Object.keys(scan.sizes).every((k) => SIZES.has(Number(k))) && Object.keys(scan.weights).every((k) => WEIGHTS.has(Number(k))), scan.bad.slice(0, 6).join(' | ') + (scan.hscroll ? ' hscroll' : ''));
   }
   check(`B2. ${theme}: zero console errors and warnings across the routes`, errors.length === 0, errors.slice(0, 3).join(' | '));
+  // The family name in a computed style only says what was asked for. The bundled files must have loaded, from the gateway's own origin (no CDN).
+  await page.goto(`${base}/#token=${TOKEN}`, { waitUntil: 'networkidle' });
+  const faces = await page.evaluate(async () => {
+    await document.fonts.ready;
+    const loaded: string[] = [];
+    document.fonts.forEach((f) => { if (f.status === 'loaded') loaded.push(f.family.replace(/"/g, '')); });
+    return {
+      loaded,
+      inter: document.fonts.check('600 32px "Inter Variable"') && document.fonts.check('400 14px "Inter Variable"'),
+      mono: document.fonts.check('400 13px "Geist Mono Variable"'),
+      foreign: performance.getEntriesByType('resource').map((e) => e.name).filter((u) => /\.woff2?(\?|$)/.test(u) && !u.startsWith(location.origin)),
+      fontFiles: performance.getEntriesByType('resource').map((e) => e.name).filter((u) => /\.woff2?(\?|$)/.test(u)).length,
+    };
+  });
+  check(`B3. ${theme}: the bundled Inter and Geist Mono files loaded (not a system fallback), every font file from the gateway's own origin`, faces.loaded.includes('Inter Variable') && faces.loaded.includes('Geist Mono Variable') && faces.inter && faces.mono && faces.fontFiles > 0 && faces.foreign.length === 0, JSON.stringify(faces));
+  await context.close();
+}
+// No page scrolls sideways at any window width a person uses: a phone, a laptop, a desktop at 100% zoom and a wide or zoomed-out window.
+// Wide tables scroll inside their own box. (The Settings table used to push the whole page to 530px at 390.)
+{
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await context.addInitScript(() => { localStorage.setItem('qa-core.theme', 'light'); });
+  const page = await context.newPage();
+  const sideways: string[] = [];
+  const WIDTHS = [390, 1280, 1580, 1976];
+  const pages = ROUTES.filter((r) => !r.dialog);
+  for (const width of WIDTHS) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const r of pages) {
+      await page.goto(`${base}${r.path}#token=${TOKEN}`, { waitUntil: 'networkidle' });
+      if (r.tab) await page.click(`[data-testid="rail-item"][data-stage="${r.tab}"]`);
+      await page.waitForTimeout(250);
+      // When a page does scroll sideways, name the elements that stick out, so the failure says what to fix.
+      const w = await page.evaluate(() => {
+        const client = document.documentElement.clientWidth; const out: string[] = [];
+        for (const el of Array.from(document.querySelectorAll('body *'))) {
+          const r = el.getBoundingClientRect();
+          if (r.width > 0 && r.right > client + 1 && out.length < 4) out.push(`${el.tagName.toLowerCase()}[${el.getAttribute('data-testid') ?? String((el as HTMLElement).className).slice(0, 40)}] to ${Math.round(r.right)}px "${(el.textContent ?? '').trim().slice(0, 30)}"`);
+        }
+        return { scroll: document.documentElement.scrollWidth, client, out };
+      });
+      if (w.scroll > w.client) sideways.push(`${r.name} at ${width}: ${w.scroll}px wide (${w.out.join(' | ')})`);
+    }
+  }
+  check(`B4. no page scrolls sideways at ${WIDTHS.join(', ')} (${pages.length} routes each, the run page once per stage tab)`, sideways.length === 0, sideways.join('; '));
   await context.close();
 }
 console.log('\nSize counts by route (visible text elements):');
