@@ -400,6 +400,15 @@ await page.goto(`${base}/findings#token=${TOKEN}`, { waitUntil: 'networkidle' })
 await page.waitForSelector('[data-testid="finding-row"]');
 const findingsPage = await page.evaluate(() => ({ rows: document.querySelectorAll('[data-testid="finding-row"]').length, project: document.querySelector('[data-testid="finding-row"] a')?.textContent, heading: document.querySelector('[data-testid="findings-heading"]')?.textContent }));
 check('Z. /findings lists the deduped finding with its project under the violet heading', findingsPage.rows === 1 && findingsPage.project === 'Shop Final' && /^Product behavior to review/.test(findingsPage.heading ?? ''), JSON.stringify(findingsPage));
+// One frame around the findings table, not a box inside a box: the table's own box carries the only border, and the notes box is wide enough to type in.
+const frame = await page.evaluate(() => {
+  const table = document.querySelector('[data-testid="findings-table"]')!;
+  const box = table.parentElement!;
+  const outer = box.parentElement!;
+  const notes = document.querySelector('[data-testid="finding-row"] textarea')!;
+  return { boxBorder: getComputedStyle(box).borderTopWidth, outerBorder: getComputedStyle(outer).borderTopWidth, outerPad: getComputedStyle(outer).paddingTop, notesW: Math.round(notes.getBoundingClientRect().width) };
+});
+check('Z6. page: the findings table has one frame (no bordered, padded box around its own box) and a notes box at least 140px wide', frame.boxBorder === '1px' && frame.outerBorder === '0px' && frame.outerPad === '0px' && frame.notesW >= 140, JSON.stringify(frame));
 const toggleBefore = await page.evaluate(() => ({ text: document.querySelector('[data-testid="locator-toggle"]')?.textContent?.replace(/\s+/g, ' ').trim() ?? '', expanded: document.querySelector('[data-testid="locator-toggle"]')?.getAttribute('aria-expanded'), rows: document.querySelectorAll('[data-testid="locator-failure-row"]').length }));
 await page.click('[data-testid="locator-toggle"]');
 await page.waitForSelector('[data-testid="locator-failure-row"]');

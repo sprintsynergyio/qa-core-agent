@@ -100,17 +100,17 @@ export function FindingsHeading({ count }: { count: number }) {
 export function FindingsTable({ findings, showProject = true, onChange }: { findings: FindingRow[]; showProject?: boolean; onChange?: (f: FindingRow) => void }) {
   if (findings.length === 0) return <div className="rounded-lg border border-finding/40 bg-finding-soft px-4 py-3 text-small text-fg-2" data-testid="no-findings">No findings recorded</div>;
   return (
-    <div className="rounded-lg border border-finding/40 bg-finding-soft p-2">
-      <div className="overflow-hidden rounded-md border border-line bg-bg-1">
+    <div data-testid="findings-frame">
+      <div className="overflow-hidden rounded-lg border border-finding/40 bg-bg-1">
         <table className="w-full table-fixed text-body" data-testid="findings-table">
           <colgroup>
             {showProject ? <col className="w-[11%]" /> : null}
-            <col className={showProject ? 'w-[27%]' : 'w-[32%]'} />
-            <col className={showProject ? 'w-[18%]' : 'w-[20%]'} />
-            <col className="w-[14%]" />
+            <col className={showProject ? 'w-[26%]' : 'w-[31%]'} />
+            <col className={showProject ? 'w-[17%]' : 'w-[19%]'} />
             <col className="w-[12%]" />
-            <col className="w-[9%]" />
-            <col className={showProject ? 'w-[9%]' : 'w-[13%]'} />
+            <col className="w-[10%]" />
+            <col className="w-[8%]" />
+            <col className={showProject ? 'w-[16%]' : 'w-[20%]'} />
           </colgroup>
           <thead className="bg-bg-2 text-left text-caption font-medium text-fg-3">
             <tr>

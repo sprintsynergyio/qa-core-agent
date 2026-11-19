@@ -67,8 +67,8 @@ The one formatter module. It formats the values the server sent and never comput
 
 ## Layout
 
-- One content width on every page: `max-w-content`, 1600px, centred. The left edge never moves between pages.
-- Projects: at most four cards in a row, each at least 300px wide; fewer cards keep their card width and are never stretched across the row. Under the cards, "Recent runs" lists the five newest runs that have a report, in the Runs page's own table, with an "All runs" link.
+- One content width on every page: `max-w-content`, 1920px, centred past that. The left edge never moves between pages. Up to a 2056px window the content runs from the sidebar to the window edge with only the 32px page padding beside it.
+- Projects: at most four cards in a row, each at least 284px wide, so four fit on a 14 inch laptop at 100% zoom (1512px); fewer cards keep their card width and are never stretched across the row. A card's sentence is always two lines (the run it was verified in, then the count across runs), so the rows under it line up across the cards. Under the cards, "Recent runs" lists the five newest runs that have a report, in the Runs page's own table, with an "All runs" link.
 - Runs table: the run's name leads the row and its status sits beside the numbers.
 - Run page (invariant 86): one header line (started, ended, total cost, source, site), then the six stages as a tab list. One stage's panel is on screen at a time. A finished run opens on Summary, where the three numbers and the one download share the first screen; a live run follows the stage that is running until a person picks a tab. Long Critic notes show two lines in the scenarios table with the whole text in the tooltip.
 - Dark theme: a card surface (bg-1) is clearly lighter than the page (bg-0), so cards read as cards without a shadow.

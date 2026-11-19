@@ -136,11 +136,15 @@ function RecentRuns({ runs, error }: { runs: RunRow[] | null; error: string | nu
 }
 
 /**
- * The card grid: as many columns as fit at 300px or wider, never more than
+ * The card grid: as many columns as fit at 284px or wider, never more than
  * four (three 20px gaps). auto-fill keeps the empty tracks, so one or two
  * cards stay card-sized on a wide window and are never stretched across it.
+ * 284px is what lets four cards share a row on a 14 inch laptop at
+ * 100% zoom (a 1512px window leaves 1212px for the grid, 288px a card, which
+ * still holds "Product behavior to review" on one line); at 300px the fourth
+ * card dropped to a row of its own there and pushed Recent runs off screen.
  */
-export const PROJECT_GRID_COLUMNS = 'repeat(auto-fill, minmax(max(300px, calc((100% - 60px) / 4)), 1fr))';
+export const PROJECT_GRID_COLUMNS = 'repeat(auto-fill, minmax(max(284px, calc((100% - 60px) / 4)), 1fr))';
 
 /**
  * The headline words from the server totals (standing rule 3: the page only
@@ -181,7 +185,6 @@ function ProjectCardView({ p }: { p: ProjectCard }) {
             <h2 className="min-w-0 truncate text-subheading font-semibold" title={p.name}>
               <Link to={href} className="rounded-sm after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" data-testid="project-card-link">{p.name}</Link>
             </h2>
-            {last && last.status !== 'completed' ? <Tip className="relative z-10 shrink-0" text={`Last run ${LABEL[last.status] ?? last.status}`}><Badge variant="rework" data-testid="card-status" data-status={last.status}>{STATUS_SHORT[last.status] ?? `Last run ${last.status}`}</Badge></Tip> : null}
             {p.environment && p.environment !== 'other' ? <Badge variant="neutral" className="relative z-10 shrink-0" data-testid="env-badge">{p.environment}</Badge> : null}
           </div>
           {p.base_url
@@ -190,17 +193,24 @@ function ProjectCardView({ p }: { p: ProjectCard }) {
         </div>
       </div>
       <div>
-        {latest === null
-          ? <div className="text-body font-medium text-fg-2" data-testid="latest-shipped-missing">latest run is a pre-v2 summary</div>
-          : (<div className="flex items-baseline gap-2">
-              <span className="money text-display font-semibold" data-testid="latest-shipped">{latest}</span>
-              <span className="text-body font-medium">{formatCount(latest, 'test', 'tests').replace(/^\d+ /, '')} ready</span>
-            </div>)}
+        {/* The pill is about the last run, so it sits on the last run's line, with or without a shipped count; beside the name it wrapped a narrow card's header and pushed that card's rows out of line with the others. */}
+        <div className="flex items-center gap-2">
+          {latest === null
+            ? <div className="text-body font-medium text-fg-2" data-testid="latest-shipped-missing">latest run is a pre-v2 summary</div>
+            : (<div className="flex items-baseline gap-2">
+                <span className="money text-display font-semibold" data-testid="latest-shipped">{latest}</span>
+                <span className="text-body font-medium">{formatCount(latest, 'test', 'tests').replace(/^\d+ /, '')} ready</span>
+              </div>)}
+          {last && last.status !== 'completed' ? <Tip className="relative z-10 ml-auto shrink-0" text={`Last run ${LABEL[last.status] ?? last.status}`}><Badge variant="rework" data-testid="card-status" data-status={last.status}>{STATUS_SHORT[last.status] ?? `Last run ${last.status}`}</Badge></Tip> : null}
+        </div>
         <div className="mt-1 text-small text-fg-2" data-testid="card-sentence">
-          {last ? (<>Verified in the run on <Tip text={formatDateTime(last.started_at)} className="relative z-10">{formatDate(last.started_at)}</Tip>. </>) : 'No runs yet. '}
+          {/* Two lines on every card at every width, so the rows under the sentence line up across the cards. */}
+          <span className="block">{last ? (<>Verified in the run on <Tip text={formatDateTime(last.started_at)} className="relative z-10">{formatDate(last.started_at)}</Tip>. </>) : 'No runs yet. '}</span>
+          <span className="block">
           {p.legacy_runs
             ? (<><span className="tabular-nums" data-testid="legacy-runs">{formatCount(p.legacy_runs, 'older run', 'older runs')}</span> kept a summary only.</>)
             : (<><span className="tabular-nums" data-testid="shipped">{p.shipped === null ? 'n/a' : p.shipped}</span> across all <span className="tabular-nums" data-testid="runs-count">{formatCount(p.reported_runs, 'run', 'runs')}</span>.</>)}
+          </span>
         </div>
       </div>
       <div className="flex flex-col gap-3 border-t border-line pt-4 text-body">

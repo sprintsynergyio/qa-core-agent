@@ -34,9 +34,9 @@ export function FindingsPage({ refreshKey }: { refreshKey: number }) {
 
   return (
     <div className="flex flex-col gap-8" data-testid="findings-page">
-      <PageHeader title="To review" description="Every deduped finding across projects, with the runs that saw it. Status and notes are yours to set and survive every re-index." />
+      <PageHeader title="To review" description="Where a site did not do what a test expected, across all projects. Set a status and add a note on each one; both are kept." />
       <FindingsHeading count={productFindings.length} />
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-6">
         <label className="flex items-center gap-2 text-small text-fg-2">Project
           <select className="h-9 rounded-md border border-line-strong bg-bg-2 px-2 text-body text-fg" value={projectId} onChange={(e) => setFilter('project_id', e.target.value)} data-testid="filter-project">
             <option value="">All projects</option>
