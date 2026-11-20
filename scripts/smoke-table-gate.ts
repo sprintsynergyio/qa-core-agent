@@ -12,7 +12,7 @@
  * Pure function, zero LLM, zero network.
  */
 import { runGate, isFragileCssSelector, isTablePositionalSelector } from '../src/agent/gate.js';
-import type { Scenario, SelectorRecord, TraceStep } from '../src/agent/trace.js';
+import type { Scenario, TraceStep } from '../src/agent/trace.js';
 
 let pass = 0;
 let fail = 0;

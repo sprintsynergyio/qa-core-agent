@@ -51,7 +51,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 import { installEvalShim } from '../src/agent/eval-shim.js';
 import { createContext, runTool } from '../src/agent/tools.js';
@@ -80,6 +80,7 @@ import { totalCost } from '../src/agent/cost-total.js';
 import type { RunReport, Scenario, TraceStep } from '../src/agent/trace.js';
 import type { PlannedScenario } from '../src/agent/planner.js';
 import type { RequirementsMap } from '../src/agent/requirements.js';
+import { zipTextEntries } from './lib/zip-read.js';
 
 let pass = 0;
 let fail = 0;
@@ -491,10 +492,9 @@ try {
       const text = fs.readFileSync(full, 'utf8');
       if (text.includes(USER) || text.includes(PASS)) leaks.push(f);
     }
-    const entries = spawnSync('unzip', ['-Z1', zipPath], { encoding: 'utf8' }).stdout.split('\n').filter((e) => e && !e.endsWith('/'));
+    const entries = zipTextEntries(zipPath);
     for (const e of entries) {
-      const text = spawnSync('unzip', ['-p', zipPath, e], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).stdout;
-      if (text.includes(USER) || text.includes(PASS)) leaks.push(`zip:${e}`);
+      if (e.text.includes(USER) || e.text.includes(PASS)) leaks.push(`zip:${e.name}`);
     }
     check('G2. no file in the run folder and no entry in the zip holds either value', leaks.length === 0 && entries.length > 5, JSON.stringify(leaks));
     const runReport = fs.readFileSync(path.join(runDir, 'run-report.json'), 'utf8');

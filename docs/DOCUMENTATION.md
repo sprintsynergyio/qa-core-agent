@@ -76,13 +76,13 @@ The other differentiators:
 
 ### Prerequisites
 
-- Node.js 20 or higher
+- Node.js 22 or higher
 - An Anthropic API key
 
 ### Install
 
 ```bash
-git clone https://github.com/sprintsynergyhq/qa-core-agent.git
+git clone https://github.com/sprintsynergyio/qa-core-agent.git
 cd qa-core-agent
 cp .env.example .env             # then edit .env and add ANTHROPIC_API_KEY
 bash setup.sh                    # installs deps + Playwright Chromium
@@ -731,13 +731,14 @@ See [docs/MCP.md](./MCP.md) for the install guide.
 
 ---
 
-### 6.7 `npm test` / `npm run test:ci`
+### 6.7 `npm test`, `npm run test:specs`, `npm run test:ci`
 
-Standard Playwright invocations against `output/`.
+`npm test` runs the smoke suite (`npm run smoke`): every `scripts/smoke-*.ts`, with the live smokes skipped. The other two are standard Playwright invocations against generated specs in `output/`.
 
 ```bash
-npm test                # interactive, list reporter
-npm run test:ci         # CI reporter, HTML output, JSON results
+npm test                # the smoke suite; no API key needed, nothing is spent
+npm run test:specs      # generated specs, interactive, list reporter
+npm run test:ci         # generated specs, CI reporter, HTML output, JSON results
 ```
 
 Playwright is configured in [`playwright.config.ts`](../playwright.config.ts) with Chromium / Firefox / WebKit / mobile projects, retries on CI, trace on first retry, HTML report.
@@ -800,11 +801,11 @@ The MCP server at [`src/mcp/server.ts`](../src/mcp/server.ts) exposes `qa_explor
 
 The workflow at [`.github/workflows/qa-core.yml`](../.github/workflows/qa-core.yml) runs on every push and PR:
 
-1. Install Node 20 + dependencies
-2. Type-check
-3. Install Playwright Chromium with system deps
-4. If `output/**/*.spec.ts` or `*.spec.js` is present, run `npm run test:ci`
-5. Upload `playwright-report/` as an artifact
+1. Install dependencies with `npm ci`, on Node 22 and on Node 24 (`ubuntu-24.04`; `ubuntu-latest` is Ubuntu 26.04, where Playwright 1.60 cannot install Chromium)
+2. Type-check and lint
+3. Build the dashboard
+4. Install Playwright Chromium with system deps. No `zip` or `unzip` package is installed: the agent and the smokes read and write archives in process
+5. Run the smoke suite (`npm run smoke`). The live smokes need `ANTHROPIC_API_KEY` and stay skipped: the job sets no key and never sets `QA_CORE_LIVE_SMOKES`
 
 There's also a `workflow_dispatch` trigger with an optional `run_eval` input that runs the eval harness and uploads `eval-results/` as an artifact (requires `ANTHROPIC_API_KEY` repo secret).
 
@@ -812,7 +813,7 @@ There's also a `workflow_dispatch` trigger with an optional `run_eval` input tha
 
 ### 7.5 OpenClaw integration
 
-[`.openclaw/config.json`](../.openclaw/config.json) registers QA-Core as an OpenClaw agent with:
+A local `.openclaw/config.json` (machine-specific, not kept in the repo) registers QA-Core as an OpenClaw agent with:
 
 - Persona files (SOUL, IDENTITY, TOOLS, MEMORY)
 - Skill markdown files (explore-url, generate-tests)
@@ -1560,9 +1561,6 @@ qa-core-agent/
 │   ├── explore-url.md
 │   └── generate-tests.md
 │
-├── .openclaw/
-│   └── config.json                       # OpenClaw agent registration
-│
 ├── .github/workflows/
 │   └── qa-core.yml                       # CI workflow
 │
@@ -1614,7 +1612,7 @@ qa-core-agent/
 
 | Feature | Effort | Value |
 |---|---|---|
-| Publish to npm as `@sardarusmanjutt/qa-core-mcp` so `npx ...` works without a clone | 1 hr | High — turns the install instructions from "clone + path" to one line |
+| Publish to npm as `@sprintsynergy/qa-core-mcp` so `npx ...` works without a clone | 1 hr | High — turns the install instructions from "clone + path" to one line |
 | `qa_eval` MCP tool that runs the benchmark from inside Claude Desktop | 1 hr | Medium — lets you demo to interviewers from the editor |
 | Real eval numbers in the README (run the harness, paste the output) | 5 min + API cost | High — replaces "—" placeholders with measured pass-rates |
 | Bug-first scenario derivation (Planner prompt change to lead with "what could go wrong") | 30 min | Medium — strongest QA-authentic framing |
@@ -1635,8 +1633,7 @@ qa-core-agent/
 
 MIT — use it, fork it, build on it.
 
-## Author
+## About SprintSynergy
 
-**Muhammad Usman**
-Senior QA Automation Engineer · AI Test Engineering
-[sardarusmanjutt.com](https://sardarusmanjutt.com) · [LinkedIn](https://linkedin.com/in/sardarusmanjutt)
+QA-Core is built and maintained by SprintSynergy, a QA automation and software testing company.
+[sprintsynergy.com](https://sprintsynergy.com) · [info@sprintsynergy.com](mailto:info@sprintsynergy.com)

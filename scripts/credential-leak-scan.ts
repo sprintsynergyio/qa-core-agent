@@ -24,8 +24,8 @@
 import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { SESSION_FILE_FIELD, isSessionFilePath, secretsInText } from '../src/agent/credential-leak.js';
+import { tryZip, zipTextEntries } from './lib/zip-read.js';
 
 const root = path.resolve(process.argv[2] ?? path.join(process.cwd(), 'output'));
 
@@ -48,6 +48,7 @@ const hits: Hit[] = [];
 const SESSION_LABEL = 'a saved session under playwright/.auth/, by path';
 /** Runs whose report says the zip was refused (no zip was written to scan). */
 const refusedZips: Array<{ file: string; files: string[] }> = [];
+const unreadableZips: string[] = [];
 const TEXT_EXT = /\.(json|jsonl|md|txt|ts|js|csv|html|yml|yaml|example|gitignore)$/i;
 
 function scanText(file: string, text: string): void {
@@ -57,13 +58,13 @@ function scanText(file: string, text: string): void {
 }
 
 function scanZip(abs: string, rel: string): void {
-  const list = spawnSync('unzip', ['-Z1', abs], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (list.status !== 0) { console.log(`could not list ${rel}: ${list.stderr.trim()}`); return; }
-  for (const entry of list.stdout.split('\n').filter((e) => e && !e.endsWith('/'))) {
-    if (isSessionFilePath(entry)) hits.push({ file: `${rel}!${entry}`, field: SESSION_FILE_FIELD, count: 1, secret: SESSION_LABEL });
-    const out = spawnSync('unzip', ['-p', abs, entry], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-    if (out.status !== 0) continue;
-    scanText(`${rel}!${entry}`, out.stdout);
+  // In process (adm-zip): the scan needs no system unzip. An archive that
+  // cannot be read is named, never passed over as if it had been scanned.
+  const read = tryZip(() => zipTextEntries(abs));
+  if (!read.ok) { console.log(`could not list ${rel}: ${read.error}`); unreadableZips.push(rel); return; }
+  for (const entry of read.value) {
+    if (isSessionFilePath(entry.name)) hits.push({ file: `${rel}!${entry.name}`, field: SESSION_FILE_FIELD, count: 1, secret: SESSION_LABEL });
+    scanText(`${rel}!${entry.name}`, entry.text);
   }
 }
 
@@ -105,8 +106,14 @@ if (refusedZips.length > 0) {
   for (const r of refusedZips) console.log(`  ${r.file}: refused over ${r.files.join(', ') || 'files not recorded'}`);
   console.log('');
 }
+if (unreadableZips.length > 0) {
+  console.log(`${unreadableZips.length} zip(s) could not be read and were NOT scanned:`);
+  for (const z of unreadableZips) console.log(`  ${z}`);
+  console.log('');
+}
 if (hits.length === 0) {
-  console.log('no hits');
+  // "no hits" must never cover an archive the scan could not open.
+  console.log(unreadableZips.length > 0 ? 'no hits in the files that could be read' : 'no hits');
 } else {
   for (const h of hits) console.log(`${h.file}  ${h.field}  count=${h.count}  (${h.secret})`);
   console.log('');

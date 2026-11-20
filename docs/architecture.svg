@@ -423,7 +423,7 @@
 <g id="footer" transform="translate(0, 1880)">
   <line x1="80" y1="0" x2="1320" y2="0" stroke="#2a2a36"/>
   <text x="80" y="30" class="footer">QA-Core v0.3 · Multi-agent Playwright generation on Claude</text>
-  <text x="1320" y="30" text-anchor="end" class="footer">Built by Muhammad Usman · sardarusmanjutt.com</text>
+  <text x="1320" y="30" text-anchor="end" class="footer">Built by SprintSynergy · sprintsynergy.com</text>
 </g>
 
 </svg>

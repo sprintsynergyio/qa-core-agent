@@ -26,7 +26,7 @@ export function writeCsv(rows: Row[], columns: string[]): string {
 
 export function readCsv(text: string): Row[] {
   // Strip BOM and normalise line endings.
-  const src = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  const src = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
   const lines = parseLines(src);
   if (lines.length < 2) return [];
   const header = lines[0]!;

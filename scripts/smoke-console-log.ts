@@ -28,12 +28,13 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { CONSOLE_LOG_FILENAME, startConsoleCapture } from '../src/cli/console-log.js';
 import { CREDENTIAL_REDACTION } from '../src/agent/credential-leak.js';
 import { RUN_ARTIFACTS } from '../src/agent/zip-framework.js';
 import type { RunReport } from '../src/agent/trace.js';
 import { startFakeAnthropic, type FakeAnthropicScript } from './lib/fake-anthropic.js';
+import { tryZip, zipEntryNames } from './lib/zip-read.js';
 
 let pass = 0;
 let fail = 0;
@@ -226,10 +227,10 @@ try {
         check('B6. no file under output/ holds the value (console.log, events.jsonl, the report)', leaking.length === 0, JSON.stringify(leaking));
         check('B7. the end of the run is in the file: the zip line, the cost line and the run steps', file.some((l) => l.startsWith('Wrote complete framework zip')) && file.some((l) => l.startsWith('Cost: ')) && file.some((l) => l.includes('npx playwright test')), JSON.stringify(file.slice(-12)));
         const zip = fs.readdirSync(run.runDir!).find((f) => f.endsWith('.zip'));
-        const listing = zip ? spawnSync('unzip', ['-Z1', path.join(run.runDir!, zip)], { encoding: 'utf8' }) : null;
-        const entries = (listing?.stdout ?? '').split('\n').filter(Boolean);
+        const listing = zip ? tryZip(() => zipEntryNames(path.join(run.runDir!, zip))) : null;
+        const entries = listing?.ok ? listing.value : [];
         console.log(`  B zip: ${zip ?? '(none)'}, ${entries.length} entries`);
-        check('B8. the zip listing holds no console.log', !!zip && listing?.status === 0 && entries.length > 0 && !entries.some((e) => path.basename(e) === CONSOLE_LOG_FILENAME), JSON.stringify(entries));
+        check('B8. the zip listing holds no console.log', !!zip && listing?.ok === true && entries.length > 0 && !entries.some((e) => path.basename(e) === CONSOLE_LOG_FILENAME), JSON.stringify(entries));
         // The discovery wiring through the runtime (tasks 2a and 2b): /auth is disallowed, /auth/login is linked from the entry.
         const robotsLine = 'Feature "login": robots.txt disallows its matching path(s) /auth/login (rule Disallow: /auth); not loaded.';
         const report = JSON.parse(fs.readFileSync(path.join(run.runDir!, 'run-report.json'), 'utf8')) as RunReport;

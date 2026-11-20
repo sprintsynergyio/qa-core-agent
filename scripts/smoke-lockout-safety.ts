@@ -37,7 +37,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import type { RunReport } from '../src/agent/trace.js';
 import { CREDENTIAL_SAFETY_SKIP_REASON, WRONG_PASSWORD_CAP_DEFAULT, wrongPasswordCap } from '../src/agent/test-credentials.js';
 import { LOGIN_SEQUENCE_TITLE, SERIAL_MODE_LINE } from '../src/agent/login-order.js';
@@ -45,6 +45,7 @@ import { startFakeAnthropic, type FakeAnthropicScript } from './lib/fake-anthrop
 import { runPlaywright, readTree } from './lib/emitted-runner.js';
 import { scaffold } from '../src/agent/scaffold.js';
 import { transcribe } from '../src/agent/transcriber.js';
+import { extractZip, tryZip } from './lib/zip-read.js';
 
 let pass = 0;
 let fail = 0;
@@ -206,9 +207,9 @@ try {
   if (zipPath) {
     const unzipDir = path.join(tmpRoot, 'framework');
     fs.mkdirSync(unzipDir, { recursive: true });
-    const unz = spawnSync('unzip', ['-q', zipPath, '-d', unzipDir], { encoding: 'utf8' });
+    const unz = tryZip(() => extractZip(zipPath, unzipDir));
     const root = fs.readdirSync(unzipDir).map((d) => path.join(unzipDir, d)).find((d) => fs.existsSync(path.join(d, 'package.json')));
-    check('B1. the zip extracts to a framework folder', unz.status === 0 && !!root, unz.stderr);
+    check('B1. the zip extracts to a framework folder', unz.ok && !!root, unz.error);
     if (root) {
       const files = readTree(root);
       const specFile = [...files.keys()].find((f) => /tests\/account\/account\.spec\.ts$/.test(f)) ?? '';

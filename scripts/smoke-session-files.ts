@@ -41,6 +41,7 @@ import { CredentialLeakError, SESSION_FILE_FIELD, assertNoCredentialLeak } from 
 import { runFrameworkLines, writeFrameworkZip, zipExitCode, zipResultLines } from '../src/agent/framework-zip.js';
 import { reconcile } from '../src/agent/reconcile.js';
 import type { RunReport, Scenario, SelectorRecord } from '../src/agent/trace.js';
+import { tryZip, writeFolderZip, zipEntryNames } from './lib/zip-read.js';
 
 let pass = 0;
 let fail = 0;
@@ -54,12 +55,8 @@ const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-core-session-files-'))
 // Never let the developer's own shell leak into a check.
 for (const k of Object.keys(process.env)) if (/^QA_CORE_(TEST_|AUTH_|WRONG_PASSWORD)/.test(k)) delete process.env[k];
 
-const unzipList = (zip: string): string[] => {
-  const r = spawnSync('unzip', ['-Z1', zip], { encoding: 'utf8' });
-  if (r.status !== 0) throw new Error(`unzip -Z1 failed: ${r.stderr}`);
-  return r.stdout.split('\n').filter(Boolean);
-};
-const unzipListBuffer = (buf: Buffer): string[] => { const f = path.join(tmpRoot, `b-${crypto.randomUUID()}.zip`); fs.writeFileSync(f, buf); return unzipList(f); };
+const unzipList = (zip: string): string[] => zipEntryNames(zip);
+const unzipListBuffer = (buf: Buffer): string[] => zipEntryNames(buf);
 /**
  * A child process run asynchronously: the fixture site is served from this
  * process, so a spawnSync would block the server the child must reach.
@@ -192,7 +189,7 @@ try {
     const outcome = writeFrameworkZip({ frameworkDir, destDir: runDir, zipRootName: 'fixture-automation-framework', runDir, report });
     check('B4. the zip is written', outcome.written !== undefined && outcome.refused === undefined && fs.existsSync(path.join(runDir, 'fixture-automation-framework.zip')) && report.zipRefused === undefined, JSON.stringify({ refused: outcome.refused, failed: outcome.failed }));
     const entries = outcome.written ? unzipList(outcome.written.zipPath) : [];
-    check('B5. unzip -l lists no playwright/.auth, test-results or report folders, and lists the specs and the auth setup',
+    check('B5. the zip listing holds no playwright/.auth, test-results or report folders, and lists the specs and the auth setup',
       entries.length > 5 && !entries.some((e) => RUN_OUTPUT_RE.test(e)) && entries.includes('fixture-automation-framework/tests/auth.setup.ts') && entries.some((e) => e.endsWith('account.spec.ts')), JSON.stringify(entries));
     fs.writeFileSync(path.join(runDir, 'run-report.json'), JSON.stringify(report, null, 2));
   }
@@ -271,13 +268,13 @@ try {
     fs.mkdirSync(path.join(fw, 'playwright', '.auth'), { recursive: true });
     fs.writeFileSync(path.join(fw, 'playwright', '.auth', 'user.json'), JSON.stringify({ cookies: [{ name: 'session', value: crypto.randomUUID() }] }));
     fs.writeFileSync(path.join(fw, 'README.md'), '# fixture');
-    const z = spawnSync('zip', ['-rqX', path.join(run, 'fixture-automation-framework.zip'), 'fixture-automation-framework'], { cwd: path.join(run, 'tree') });
+    const z = tryZip(() => writeFolderZip(fw, path.join(run, 'fixture-automation-framework.zip'), 'fixture-automation-framework'));
     const refusedReport = { url: base, zipRefused: { reason: 'zip refused: a session file was found at framework/playwright/.auth/user.json (playwright/.auth/ is never zipped, whatever it holds); nothing was zipped', files: [{ file: 'framework/playwright/.auth/user.json', field: SESSION_FILE_FIELD }] } };
     fs.writeFileSync(path.join(run, 'run-report.json'), JSON.stringify(refusedReport));
     const scan = spawnSync(path.join(agentRoot, 'node_modules', '.bin', 'tsx'), [path.join(agentRoot, 'scripts', 'credential-leak-scan.ts'), scanRoot], { cwd: agentRoot, encoding: 'utf8', env: { ...process.env, [HOST_USER]: USER, [HOST_PASS]: PASS } });
     const outText = scan.stdout;
     check('F1. a session file in a run folder is a hit by path, whatever it holds',
-      z.status === 0 && scan.status === 0 && outText.includes('fixture-com/20261013T000000Z-abcdef/tree/fixture-automation-framework/playwright/.auth/user.json  session file, refused by path whatever it holds'), outText);
+      z.ok && scan.status === 0 && outText.includes('fixture-com/20261013T000000Z-abcdef/tree/fixture-automation-framework/playwright/.auth/user.json  session file, refused by path whatever it holds'), outText);
     check('F2. a session file inside a zip is a hit by path', outText.includes('fixture-automation-framework.zip!fixture-automation-framework/playwright/.auth/user.json  session file, refused by path whatever it holds'), outText);
     check('F3. a run whose report records a refused zip is named, so "no hits" never reads as a scanned zip',
       outText.includes('1 run(s) record a refused zip') && outText.includes('fixture-com/20261013T000000Z-abcdef/run-report.json: refused over framework/playwright/.auth/user.json') && !outText.includes('no hits'), outText);

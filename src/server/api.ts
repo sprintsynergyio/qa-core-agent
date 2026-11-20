@@ -6,7 +6,7 @@ import type Database from 'better-sqlite3';
 import { indexOutput, renderIndexResult, type IndexResult } from './db/indexer.js';
 import { buildRunDetail, runArtifactFile } from './run-detail.js';
 import { parseGatewayCommand } from './commands.js';
-import { readRunSettings, validateEnvOverride } from '../agent/explore-request.js';
+import { readRunSettings } from '../agent/explore-request.js';
 import { projectSlug } from '../agent/output-layout.js';
 import { brandSlug } from '../agent/scaffold.js';
 import { readProjectSrs, storeProjectSrs } from './project-srs.js';

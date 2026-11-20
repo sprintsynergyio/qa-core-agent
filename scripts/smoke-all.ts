@@ -14,7 +14,10 @@
  * A smoke whose first line is "// @smoke-live" makes a paid model call or
  * loads a public website. It is SKIPPED (never counted as passed) unless
  * QA_CORE_LIVE_SMOKES=1, so the default run costs nothing and needs no
- * network beyond the machine.
+ * network beyond the machine. A live smoke also needs ANTHROPIC_API_KEY (in
+ * the environment, or in .env as the smokes themselves read it): with
+ * QA_CORE_LIVE_SMOKES=1 and no key it stays skipped and the runner says so,
+ * so a CI job without the secret can never fail on a live smoke.
  *
  *   npm run smoke
  *   QA_CORE_LIVE_SMOKES=1 npm run smoke
@@ -37,7 +40,19 @@ const files = fs.readdirSync(scriptsDir)
 interface Result { name: string; pass: boolean; skipped: boolean; reason: string; ms: number; tail: string[] }
 
 const LIVE_MARK = '// @smoke-live';
-const runLive = process.env.QA_CORE_LIVE_SMOKES === '1';
+const liveAsked = process.env.QA_CORE_LIVE_SMOKES === '1';
+
+/** True when ANTHROPIC_API_KEY is set in the environment or in .env. The value is never printed. */
+function hasApiKey(): boolean {
+  if ((process.env.ANTHROPIC_API_KEY ?? '').trim()) return true;
+  try {
+    return /^\s*(?:export\s+)?ANTHROPIC_API_KEY\s*=\s*['"]?[^\s'"#]/m.test(fs.readFileSync(path.join(repo, '.env'), 'utf8'));
+  } catch {
+    return false;
+  }
+}
+const keyPresent = hasApiKey();
+const runLive = liveAsked && keyPresent;
 
 /** True when the file's first line carries the live marker. */
 function isLive(file: string): boolean {
@@ -79,7 +94,7 @@ function run(file: string): Promise<Result> {
 const fmtMs = (ms: number): string => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
 
 const liveCount = files.filter(isLive).length;
-console.log(`smoke-all: ${files.length} scripts discovered in scripts/ (smoke-*.ts, sorted); ${liveCount} marked @smoke-live ${runLive ? 'included (QA_CORE_LIVE_SMOKES=1)' : 'skipped (set QA_CORE_LIVE_SMOKES=1 to run them)'}`);
+console.log(`smoke-all: ${files.length} scripts discovered in scripts/ (smoke-*.ts, sorted); ${liveCount} marked @smoke-live ${runLive ? 'included (QA_CORE_LIVE_SMOKES=1)' : liveAsked ? 'skipped (QA_CORE_LIVE_SMOKES=1 but ANTHROPIC_API_KEY is not set)' : 'skipped (set QA_CORE_LIVE_SMOKES=1 to run them)'}`);
 const results: Result[] = [];
 for (const [i, file] of files.entries()) {
   const name = file.replace(/\.ts$/, '');

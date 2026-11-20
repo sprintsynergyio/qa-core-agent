@@ -12,7 +12,7 @@ Generated: 2026-06-10 (v2 hardening pass complete).
 |---|---|
 | `package.json` | Node project manifest. Defines the four runtime scripts (`explore`, `generate`, `heal`, `eval`) plus the gateway and MCP server entry points. Dependencies pin Anthropic SDK, Playwright, MCP SDK, axe-core, zod, ws, dotenv. |
 | `tsconfig.json` | TypeScript compiler config. Targets ESM modules with strict type-checking. Used only for `tsc --noEmit` validation; runtime execution happens through `tsx`. |
-| `playwright.config.ts` | Playwright runner config used by `npm test` and by the eval harness when it re-executes generated specs. Defines the browser projects (the auth-setup project is retired with `tests/auth.setup.ts`). |
+| `playwright.config.ts` | Playwright runner config used by `npm run test:specs` and by the eval harness when it re-executes generated specs. Defines the browser projects (the auth-setup project is retired with `tests/auth.setup.ts`). |
 | `setup.sh` | One-shot bootstrapping script. Installs deps, runs `playwright install chromium`, and copies `.env.example` to `.env` if it doesn't exist. |
 | `.env.example` | Template for the environment variables QA-Core reads at startup. Copy to `.env` and fill in `ANTHROPIC_API_KEY` at minimum. |
 | `README.md` | Public-facing README for GitHub visitors. Quick start, commands, model routing, eval table. |

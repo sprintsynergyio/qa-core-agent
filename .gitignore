@@ -55,8 +55,8 @@ Desktop.ini
 *~
 .history/
 
-# Local OpenClaw secrets (config.json itself is checked in)
-.openclaw/secrets/
+# Local OpenClaw agent registration and secrets (machine-specific, never committed)
+.openclaw/
 
 .DS_Store
 repomix-output.xml
@@ -64,3 +64,8 @@ packages/
 
 # Playwright MCP snapshots written while driving the dashboard from Claude Code
 .playwright-mcp/
+
+# Local assistant tooling and working notes (machine-specific, never committed)
+.mcp.json
+.claude/
+STATE.md

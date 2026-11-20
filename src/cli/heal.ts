@@ -12,7 +12,7 @@ import { heal } from 'qa-core-heal/dist/heal.js';
  * to the package, and prints the report.
  *
  * The package import path is deliberately deep (qa-core-heal/dist/heal.js):
- * qa-core-heal 0.3.4 ships no "main"/"exports" entry, only a bin.
+ * qa-core-heal 0.7.2 still ships no "main"/"exports" entry, only a bin.
  *
  * The gateway /heal and the MCP qa_heal tool import { heal } from this module
  * so every heal path goes through the same package integration.
