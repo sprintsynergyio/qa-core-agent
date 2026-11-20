@@ -4,7 +4,7 @@
 
 QA-Core is an AI agent that opens a real browser, explores your app, reviews its own work, and writes a Playwright test suite. Every test runs and passes once inside the agent before it is saved to disk, so you get specs that already work on day one.
 
-Built on [Claude](https://www.anthropic.com/) by Anthropic. Distributed through [OpenClaw](https://openclaw.dev). Drives [Playwright](https://playwright.dev/).
+Built on [Claude](https://www.anthropic.com/) by Anthropic. Drives [Playwright](https://playwright.dev/).
 
 ## Table of contents
 

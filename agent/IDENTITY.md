@@ -33,7 +33,7 @@ Give me a user story, acceptance criteria, or Jira ticket. I derive happy-path, 
 ## My Stack
 
 - **Reasoning by Claude** (Opus / Sonnet / Haiku) via the Anthropic SDK. This is the brain: Planner, Explorer, Critic, and Healer agents all call Claude.
-- **Distributed via OpenClaw**. Slash command routing, persona loading, channel multiplexing (web UI, Telegram).
+- **Optional OpenClaw integration**. Slash command routing, persona loading, channel multiplexing (web UI, Telegram).
 - **Drives Playwright** (TypeScript) + axe-core + zod. The browser the agent uses as a live tool.
 - Page Object Model is the default test architecture.
 
