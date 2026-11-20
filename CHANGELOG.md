@@ -23,7 +23,7 @@ Release readiness. Not tagged yet.
 - Node 22 or newer is required (`engines`), and Node 24 is supported.
 - Framework zips are built in process with `adm-zip`. The agent no longer shells out to the `zip` command, which Windows does not have. Windows as a whole is not tested yet.
 - `npm test` runs the smoke suite. The old behaviour (Playwright against generated specs in `output/`) is `npm run test:specs`.
-- `better-sqlite3` 11 to 13, which ships prebuilt binaries for Node 24.
+- `better-sqlite3` 11 to 12, which downloads a prebuilt binary for Node 22 and Node 24. Version 13 was tried and left: npm 10 and 11 build it from source when they install from a lockfile.
 - `qa-core-heal` 0.3.4 to 0.7.2.
 - `@anthropic-ai/sdk` 0.32 to 1.11.
 - `@modelcontextprotocol/sdk` 1.30 to 1.32 and `zod` 3 to 4.
