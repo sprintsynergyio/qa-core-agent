@@ -801,7 +801,7 @@ The MCP server at [`src/mcp/server.ts`](../src/mcp/server.ts) exposes `qa_explor
 
 The workflow at [`.github/workflows/qa-core.yml`](../.github/workflows/qa-core.yml) runs on every push and PR:
 
-1. Install dependencies with `npm ci`, on Node 22 and on Node 24 (`ubuntu-latest`)
+1. Install dependencies with `npm ci`, on Node 22 and on Node 24 (`ubuntu-24.04`; `ubuntu-latest` is Ubuntu 26.04, where Playwright 1.60 cannot install Chromium)
 2. Type-check and lint
 3. Build the dashboard
 4. Install the system `zip` and `unzip` packages (the smokes read the framework zips with `unzip`) and Playwright Chromium with system deps

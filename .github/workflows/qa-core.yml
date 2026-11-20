@@ -19,7 +19,10 @@ concurrency:
 jobs:
   test:
     name: Typecheck, lint, build, smoke (Node ${{ matrix.node }})
-    runs-on: ubuntu-latest
+    # Pinned on purpose: ubuntu-latest is Ubuntu 26.04, where Playwright 1.60
+    # cannot install Chromium (PR #61). Move back to ubuntu-latest together
+    # with a Playwright upgrade, and raise the emitted framework's pin then.
+    runs-on: ubuntu-24.04
     timeout-minutes: 75
     strategy:
       fail-fast: false
@@ -68,7 +71,7 @@ jobs:
   eval:
     name: Eval harness (manual)
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_eval == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: test
     env:
