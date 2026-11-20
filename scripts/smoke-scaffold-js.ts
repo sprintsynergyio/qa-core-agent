@@ -159,7 +159,6 @@ const syntaxCheckOk = (() => {
       },
       process: { env: {}, env_BASE_URL: undefined },
     };
-    // eslint-disable-next-line no-new-func
     const fn = new Function('module', 'require', 'process', pwConfig);
     fn(sandbox.module, sandbox.require, sandbox.process);
     return typeof sandbox.module.exports === 'object';

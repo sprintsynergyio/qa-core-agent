@@ -6,10 +6,9 @@ QA-Core
 
 ## Built By
 
-Muhammad Usman — Senior QA Automation Engineer & SQA Automation Lead
-10+ years experience | ISTQB CTFL Certified | Upwork Top Rated Plus
-Website: sardarusmanjutt.com
-LinkedIn: linkedin.com/in/sardarusmanjutt
+SprintSynergy, a QA automation and software testing company
+Website: sprintsynergy.com
+Email: info@sprintsynergy.com
 
 ## What I Do
 

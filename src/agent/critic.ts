@@ -558,6 +558,9 @@ export function describeStep(step: TraceStep): string {
           return a.credential ? `assert ${where(a.target)} value=<credential:${a.credential}>${t}` : `assert ${where(a.target)} value="${a.value}"${t}`;
         }
       }
+      // Every assertion type returns above. A type added without a rendering
+      // must fail here, never fall through and read as a capture line.
+      throw new Error(`describeStep: no rendering for assertion type "${(a as { type: string }).type}"`);
     }
     case 'capture': {
       const what = step.source === 'attribute' ? `${step.attribute} of ${where(step.target)}` : step.source === 'count' ? `count of ${where(step.target)}` : `text of ${where(step.target)}`;

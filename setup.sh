@@ -38,7 +38,8 @@ Next steps:
     npm run explore  -- https://www.saucedemo.com/
     npm run generate -- "As a user I want to log in..."
     npm run heal     -- output/<run-id>/<name>.spec.ts
-    npm test                     # execute generated suite
+    npm run test:specs           # execute generated suite
+    npm test                     # the agent's own smoke suite
     npm run eval                 # eval harness across 3 public sites
 
   Web UI:

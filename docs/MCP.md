@@ -10,7 +10,7 @@ QA-Core ships an MCP (Model Context Protocol) server that exposes its workflows 
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - The QA-Core repo checked out somewhere on disk
 - `npm install` has been run inside the repo
 - `npx playwright install chromium` (the server drives a real browser)

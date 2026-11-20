@@ -7,6 +7,12 @@
  *   - The unzipped contents match the originals byte-for-byte
  *   - Refuses missing / non-directory inputs
  *   - Sanity: produced zip is < 1 MB for a typical generated framework
+ *   - The archive is built in process (no `zip` command, so it works on
+ *     Windows): the module starts no child process, it still zips with a PATH
+ *     that holds no `zip`, entry names use forward slashes, the root folder
+ *     can be renamed, the exclude patterns keep their old meaning, a file's
+ *     permission bits survive, and a symlink that points back up the tree
+ *     does not loop
  *
  * No network. Builds a fixture framework via scaffold.ts, then zips it.
  */
@@ -15,7 +21,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { scaffold } from '../src/agent/scaffold.js';
-import { zipFrameworkToFile, zipFrameworkToBuffer, zipFrameworkToDataUrl } from '../src/agent/zip-framework.js';
+import AdmZip from 'adm-zip';
+import { zipFrameworkToFile, zipFrameworkToBuffer, zipFrameworkToDataUrl, RUN_ARTIFACTS } from '../src/agent/zip-framework.js';
 import type { RunReport } from '../src/agent/trace.js';
 
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-core-zip-'));
@@ -125,6 +132,64 @@ check('T. buffer zipper refuses regular file as source', threw);
 
 // 7. Sanity — typical framework should be well under 1 MB.
 check('U. zip size under 1 MB (sanity)', fileResult.sizeBytes < 1024 * 1024);
+
+// 8. Built in process, so it works where there is no `zip` command (Windows).
+const moduleSource = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'src', 'agent', 'zip-framework.ts'), 'utf8');
+check('V. the zip module starts no child process', !/child_process|spawnSync|execSync|execFile/.test(moduleSource));
+const savedPath = process.env.PATH;
+process.env.PATH = path.join(tmpRoot, 'empty-bin');
+let noZipBuf: Buffer | null = null;
+try { noZipBuf = zipFrameworkToBuffer(frameworkDir); } catch { noZipBuf = null; }
+process.env.PATH = savedPath;
+check('W. it zips with a PATH that holds no zip command', noZipBuf !== null && noZipBuf.length > 0);
+
+// A tree that exercises the root name, the excludes, permissions and a symlink loop.
+const tree = path.join(tmpRoot, 'run-20260101T000000Z-abc123');
+fs.mkdirSync(path.join(tree, 'tests', 'login'), { recursive: true });
+fs.mkdirSync(path.join(tree, 'tests', 'playwright', '.auth'), { recursive: true });
+fs.mkdirSync(path.join(tree, 'test-results', 'trace'), { recursive: true });
+fs.mkdirSync(path.join(tree, 'empty-dir'));
+fs.writeFileSync(path.join(tree, 'package.json'), '{}');
+fs.writeFileSync(path.join(tree, 'checkpoint.json'), '{}');
+fs.writeFileSync(path.join(tree, 'toolshop-srs.md'), 'srs');
+fs.writeFileSync(path.join(tree, 'old.zip'), 'zip');
+fs.writeFileSync(path.join(tree, 'tests', 'login', 'login.spec.ts'), 'spec');
+fs.writeFileSync(path.join(tree, 'tests', 'checkpoint.json'), 'a nested file with a run artifact name stays');
+fs.writeFileSync(path.join(tree, 'tests', 'nested.zip'), 'zip');
+fs.writeFileSync(path.join(tree, 'tests', 'playwright', '.auth', 'user.json'), '{"cookies":[]}');
+fs.writeFileSync(path.join(tree, 'test-results', 'trace', 't.zip'), 'trace');
+fs.writeFileSync(path.join(tree, 'run.sh'), '#!/bin/sh\n');
+fs.chmodSync(path.join(tree, 'run.sh'), 0o755);
+fs.symlinkSync(tree, path.join(tree, 'tests', 'loop'), 'dir');
+const names = (b: Buffer): string[] => new AdmZip(b).getEntries().map((e) => e.entryName).sort();
+const renamed = zipFrameworkToBuffer(tree, 'shop-automation-framework');
+const renamedNames = names(renamed);
+check('X. entries sit under the requested root folder, never the run id', renamedNames.length > 0 && renamedNames.every((n) => n.startsWith('shop-automation-framework/')), renamedNames.join(', '));
+check('Y. entry names use forward slashes only', renamedNames.every((n) => !n.includes('\\')));
+const has = (n: string): boolean => renamedNames.includes(`shop-automation-framework/${n}`);
+check('Z. run artifacts are left out by name at the root, a zip or an SRS copy at any depth, and a nested file with an artifact name stays',
+  has('package.json') && has('tests/login/login.spec.ts') && has('tests/checkpoint.json') && !has('checkpoint.json') && !has('toolshop-srs.md') && !has('old.zip') && !has('tests/nested.zip'), renamedNames.join(', '));
+check('AA. run output folders are left out at any depth, folder entry included', !renamedNames.some((n) => n.includes('playwright/.auth') || n.includes('test-results')), renamedNames.join(', '));
+check('AB. an empty folder keeps its entry', has('empty-dir/'));
+const loopEntries = renamedNames.filter((n) => n.includes('/tests/loop/'));
+check('AC. a symlink that points back up the tree is not followed into a loop', loopEntries.length === 0 && renamedNames.length < 20, `${renamedNames.length} entries`);
+const noExclude = names(zipFrameworkToBuffer(tree, 'shop-automation-framework', []));
+check('AD. with an empty exclude list the artifacts are zipped and the run output folders still are not', noExclude.includes('shop-automation-framework/checkpoint.json') && noExclude.includes('shop-automation-framework/old.zip') && !noExclude.some((n) => n.includes('playwright/.auth') || n.includes('test-results')), noExclude.join(', '));
+check('AE. the default exclude list is RUN_ARTIFACTS', JSON.stringify(names(zipFrameworkToBuffer(tree, 'shop-automation-framework', RUN_ARTIFACTS))) === JSON.stringify(renamedNames));
+// The system unzip reads the renamed archive and restores the executable bit.
+const renamedZip = path.join(tmpRoot, 'renamed.zip');
+fs.writeFileSync(renamedZip, renamed);
+const renamedOut = path.join(tmpRoot, 'renamed-out');
+const renamedExtract = spawnSync('unzip', ['-q', renamedZip, '-d', renamedOut], { encoding: 'utf8' });
+check('AF. unzip extracts the renamed archive', renamedExtract.status === 0, renamedExtract.stderr);
+check('AG. a file keeps its permission bits', renamedExtract.status === 0 && (fs.statSync(path.join(renamedOut, 'shop-automation-framework', 'run.sh')).mode & 0o111) !== 0);
+threw = false;
+try { zipFrameworkToBuffer(tree, '../escape'); } catch { threw = true; }
+check('AH. a root name that is not a plain folder name is refused', threw);
+// Writing the zip inside the folder it zips never puts the zip in itself.
+const inside = zipFrameworkToFile(tree, path.join(tree, 'shop-automation-framework.zip'), 'shop-automation-framework');
+const insideNames = names(fs.readFileSync(inside.zipPath));
+check('AI. a zip written inside its own source folder does not contain itself', !insideNames.some((n) => n.endsWith('.zip')) && insideNames.includes('shop-automation-framework/package.json'), insideNames.join(', '));
 
 // Cleanup.
 fs.rmSync(tmpRoot, { recursive: true, force: true });

@@ -532,7 +532,7 @@ const loginFills: TraceStep[] = [
 ];
 const navMenu: SelectorRecord = { level: 'testid', arg: 'nav-menu', intent: 'user menu' };
 const janeDoe = catalogueLiteralReason({ type: 'toHaveText', target: navMenu, text: 'Jane Doe' }, loginFills);
-check('R7A1. "Jane Doe" on the user menu after a login is a literal account name', /user\'s name shown after login|account/.test(janeDoe ?? '') && /name-shaped pattern/.test(janeDoe ?? ''), janeDoe ?? 'null');
+check('R7A1. "Jane Doe" on the user menu after a login is a literal account name', /user's name shown after login|account/.test(janeDoe ?? '') && /name-shaped pattern/.test(janeDoe ?? ''), janeDoe ?? 'null');
 const typedName = catalogueLiteralReason({ type: 'toContainText', target: { level: 'role', arg: { role: 'alert' }, intent: 'welcome banner' }, text: 'customer@practicesoftwaretesting.com' }, loginFills);
 check('R7A2. the identifier typed into the email field is a literal account value on any target', /typed into email input/.test(typedName ?? '') && /name-shaped pattern/.test(typedName ?? ''), typedName ?? 'null');
 const known = catalogueLiteralReason({ type: 'toHaveText', target: { level: 'css', arg: '#greeting', intent: 'greeting' }, text: 'admin@practicesoftwaretesting.com' }, [], ['admin@practicesoftwaretesting.com']);

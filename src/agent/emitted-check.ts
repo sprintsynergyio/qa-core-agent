@@ -166,7 +166,6 @@ export function findAgentRoot(from: string = path.dirname(fileURLToPath(import.m
 }
 
 function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
   return s.replace(/\u001b\[[0-9;]*m/g, '');
 }
 

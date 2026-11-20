@@ -25,7 +25,6 @@ import { filterPages, FILTERED_SOURCES, MAX_PAGES_WITH_FEATURES } from './page-f
 import { featureTokenMap } from './requirements.js';
 import {
   CHECKPOINT_VERSION,
-  checkpointPath,
   classifyRunError,
   isBillingError,
   priorSpend,

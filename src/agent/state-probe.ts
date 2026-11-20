@@ -279,7 +279,7 @@ export function splitRulesByPage(
   const verbRe = verbs.length > 0 ? new RegExp(`\\b(${verbs.join('|')})(s|es|ed|d|ing)?\\b`) : null;
   const tokenWords = opts.tokens.map((t) => normalizeWords(t)).filter(Boolean);
   const pageRe = tokenWords.length > 0 ? new RegExp(`\\b(${tokenWords.join('|')}) pages?\\b`) : null;
-  const pagePhrases = [...(opts.revealedHeadings ?? []), ...(opts.revealedTitle ?? '').split(/[|:·•\-]+/)]
+  const pagePhrases = [...(opts.revealedHeadings ?? []), ...(opts.revealedTitle ?? '').split(/[|:·•-]+/)]
     .map((h) => normalizeWords(h))
     .filter((h) => h.split(' ').length >= 2);
   return rules.map((r) => {
