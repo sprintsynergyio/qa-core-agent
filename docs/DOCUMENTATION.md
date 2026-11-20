@@ -804,7 +804,7 @@ The workflow at [`.github/workflows/qa-core.yml`](../.github/workflows/qa-core.y
 1. Install dependencies with `npm ci`, on Node 22 and on Node 24 (`ubuntu-24.04`; `ubuntu-latest` is Ubuntu 26.04, where Playwright 1.60 cannot install Chromium)
 2. Type-check and lint
 3. Build the dashboard
-4. Install the system `zip` and `unzip` packages (the smokes read the framework zips with `unzip`) and Playwright Chromium with system deps
+4. Install Playwright Chromium with system deps. No `zip` or `unzip` package is installed: the agent and the smokes read and write archives in process
 5. Run the smoke suite (`npm run smoke`). The live smokes need `ANTHROPIC_API_KEY` and stay skipped: the job sets no key and never sets `QA_CORE_LIVE_SMOKES`
 
 There's also a `workflow_dispatch` trigger with an optional `run_eval` input that runs the eval harness and uploads `eval-results/` as an artifact (requires `ANTHROPIC_API_KEY` repo secret).

@@ -17,6 +17,7 @@ Release readiness. Not tagged yet.
 - `npm run lint`: ESLint flat config for the TypeScript in `src/` and `scripts/`.
 - CI runs the whole smoke suite on Node 22 and Node 24, after typecheck, lint and the dashboard build. The live smokes stay skipped.
 - More checks in `smoke-zip` for the in-process zip: no `zip` command needed, forward-slash entry names, the renamed root folder, the exclude patterns, permission bits and a symlink loop.
+- `smoke-mcp-version`: starts the real MCP server, connects a client over stdio and checks that the version it reports equals `package.json`'s.
 
 ### Changed
 
@@ -29,6 +30,12 @@ Release readiness. Not tagged yet.
 - `@modelcontextprotocol/sdk` 1.30 to 1.32 and `zod` 3 to 4.
 - The project lives at `github.com/sprintsynergyio/qa-core-agent`. Package metadata, the README, the docs and the README written into every generated framework point there.
 - The project is published by SprintSynergy: package author, licence copyright and the "About SprintSynergy" section of the README.
+- The MCP server reports the version in `package.json`, read at runtime through one helper (`src/agent/package-version.ts`). It reported 0.4.0 from two hard-coded strings while the package was 0.3.0.
+- The smoke suite and `scripts/credential-leak-scan.ts` read, extract and write zips in process (`scripts/lib/zip-read.ts`, adm-zip). They no longer call the system `zip` or `unzip`, and CI no longer installs them. One optional cross-check in `smoke-zip` still opens an archive with the system `unzip` when one is on PATH, and says so when none is.
+- `scripts/credential-leak-scan.ts` names every zip it could not read and no longer prints a plain "no hits" in that case.
+- The Critic's step rendering no longer throws on an assertion type it does not know: it writes `assert <type> (no rendering)` and logs one warning per type, so a checkpoint written by another version cannot stop a resumed run.
+- OpenClaw is described as an optional integration. The README no longer says the project is distributed through it.
+- CLAUDE.md describes `.mcp.json` and `.claude/skills/` as optional local files that each contributor creates and git ignores.
 
 ### Removed
 

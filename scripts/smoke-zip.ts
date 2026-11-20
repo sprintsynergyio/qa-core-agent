@@ -1,7 +1,7 @@
 /**
  * Verifies the framework zipper:
- *   - zipFrameworkToFile writes a valid zip that unzip can list and extract
- *   - zipFrameworkToBuffer returns bytes that unzip recognizes via stdin
+ *   - zipFrameworkToFile writes a valid zip that can be listed and extracted
+ *   - zipFrameworkToBuffer returns bytes that read as the same archive
  *   - zipFrameworkToDataUrl returns a proper data: URL
  *   - The zip contains the expected files (no nesting weirdness, no symlinks)
  *   - The unzipped contents match the originals byte-for-byte
@@ -14,16 +14,23 @@
  *     permission bits survive, and a symlink that points back up the tree
  *     does not loop
  *
+ *   - No smoke and no script starts a system `zip` or `unzip` (AK). The one
+ *     exception is this file's cross-check AJ: when a system `unzip` is on
+ *     PATH it opens the archive too, as a reader that is not the library
+ *     that wrote it. With none on PATH, AJ says so and is not counted.
+ *
  * No network. Builds a fixture framework via scaffold.ts, then zips it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { scaffold } from '../src/agent/scaffold.js';
 import AdmZip from 'adm-zip';
 import { zipFrameworkToFile, zipFrameworkToBuffer, zipFrameworkToDataUrl, RUN_ARTIFACTS } from '../src/agent/zip-framework.js';
 import type { RunReport } from '../src/agent/trace.js';
+import { extractZip, tryZip, zipEntryMode, zipEntryNames } from './lib/zip-read.js';
 
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-core-zip-'));
 const frameworkDir = path.join(tmpRoot, 'saucedemo-framework');
@@ -65,23 +72,23 @@ check('B. file zip exists on disk', fs.existsSync(zipPath));
 check('C. file zip is non-empty', fileResult.sizeBytes > 0);
 check('D. file zip size matches stat', fileResult.sizeBytes === fs.statSync(zipPath).size);
 
-// 2. The zip is a real zip (unzip can list it).
-const listResult = spawnSync('unzip', ['-l', zipPath], { encoding: 'utf8' });
-check('E. unzip -l succeeds on the file', listResult.status === 0, listResult.stderr);
-if (listResult.status === 0) {
-  const listing = listResult.stdout;
-  check('F. zip contains package.json', /saucedemo-framework\/package\.json/.test(listing));
-  check('G. zip contains README.md', /saucedemo-framework\/README\.md/.test(listing));
-  check('H. zip contains pages/', /saucedemo-framework\/pages\//.test(listing));
-  check('I. zip contains tests/', /saucedemo-framework\/tests\//.test(listing));
-  check('J. zip preserves top-level directory', /^Archive:|saucedemo-framework\//.test(listing));
+// 2. The zip is a real zip (it can be listed).
+const listResult = tryZip(() => zipEntryNames(zipPath));
+check('E. the file lists as a zip', listResult.ok, listResult.error);
+if (listResult.ok) {
+  const listing = listResult.value;
+  check('F. zip contains package.json', listing.includes('saucedemo-framework/package.json'));
+  check('G. zip contains README.md', listing.includes('saucedemo-framework/README.md'));
+  check('H. zip contains pages/', listing.some((n) => n.startsWith('saucedemo-framework/pages/')));
+  check('I. zip contains tests/', listing.some((n) => n.startsWith('saucedemo-framework/tests/')));
+  check('J. every entry sits under the one top-level directory', listing.length > 0 && listing.every((n) => n.startsWith('saucedemo-framework/')), listing.filter((n) => !n.startsWith('saucedemo-framework/')).join(', '));
 }
 
 // 3. The zip extracts correctly and matches original byte-for-byte.
 const extractDir = path.join(tmpRoot, 'extracted');
 fs.mkdirSync(extractDir);
-const extractResult = spawnSync('unzip', ['-q', zipPath, '-d', extractDir], { encoding: 'utf8' });
-check('K. unzip extract succeeds', extractResult.status === 0, extractResult.stderr);
+const extractResult = tryZip(() => extractZip(zipPath, extractDir));
+check('K. the zip extracts', extractResult.ok, extractResult.error);
 const originalPkg = fs.readFileSync(path.join(frameworkDir, 'package.json'), 'utf8');
 const extractedPkg = fs.readFileSync(path.join(extractDir, 'saucedemo-framework', 'package.json'), 'utf8');
 check('L. extracted package.json matches original byte-for-byte', originalPkg === extractedPkg);
@@ -98,8 +105,8 @@ const bufferZipPath = path.join(tmpRoot, 'from-buffer.zip');
 fs.writeFileSync(bufferZipPath, buf);
 const bufferExtractDir = path.join(tmpRoot, 'extracted-from-buffer');
 fs.mkdirSync(bufferExtractDir);
-const bufferExtract = spawnSync('unzip', ['-q', bufferZipPath, '-d', bufferExtractDir], { encoding: 'utf8' });
-check('O. buffer-zip extracts cleanly', bufferExtract.status === 0, bufferExtract.stderr);
+const bufferExtract = tryZip(() => extractZip(bufferZipPath, bufferExtractDir));
+check('O. buffer-zip extracts cleanly', bufferExtract.ok, bufferExtract.error);
 const bufferExtractedPkg = fs.readFileSync(path.join(bufferExtractDir, 'saucedemo-framework', 'package.json'), 'utf8');
 check('O2. buffer-zip extracted package.json matches original', originalPkg === bufferExtractedPkg);
 // Sizes should be within 10% — minor metadata differences only
@@ -134,7 +141,8 @@ check('T. buffer zipper refuses regular file as source', threw);
 check('U. zip size under 1 MB (sanity)', fileResult.sizeBytes < 1024 * 1024);
 
 // 8. Built in process, so it works where there is no `zip` command (Windows).
-const moduleSource = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'src', 'agent', 'zip-framework.ts'), 'utf8');
+const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
+const moduleSource = fs.readFileSync(path.join(scriptsDir, '..', 'src', 'agent', 'zip-framework.ts'), 'utf8');
 check('V. the zip module starts no child process', !/child_process|spawnSync|execSync|execFile/.test(moduleSource));
 const savedPath = process.env.PATH;
 process.env.PATH = path.join(tmpRoot, 'empty-bin');
@@ -176,13 +184,14 @@ check('AC. a symlink that points back up the tree is not followed into a loop', 
 const noExclude = names(zipFrameworkToBuffer(tree, 'shop-automation-framework', []));
 check('AD. with an empty exclude list the artifacts are zipped and the run output folders still are not', noExclude.includes('shop-automation-framework/checkpoint.json') && noExclude.includes('shop-automation-framework/old.zip') && !noExclude.some((n) => n.includes('playwright/.auth') || n.includes('test-results')), noExclude.join(', '));
 check('AE. the default exclude list is RUN_ARTIFACTS', JSON.stringify(names(zipFrameworkToBuffer(tree, 'shop-automation-framework', RUN_ARTIFACTS))) === JSON.stringify(renamedNames));
-// The system unzip reads the renamed archive and restores the executable bit.
+// The renamed archive extracts, and the executable bit is stored on the entry.
 const renamedZip = path.join(tmpRoot, 'renamed.zip');
 fs.writeFileSync(renamedZip, renamed);
 const renamedOut = path.join(tmpRoot, 'renamed-out');
-const renamedExtract = spawnSync('unzip', ['-q', renamedZip, '-d', renamedOut], { encoding: 'utf8' });
-check('AF. unzip extracts the renamed archive', renamedExtract.status === 0, renamedExtract.stderr);
-check('AG. a file keeps its permission bits', renamedExtract.status === 0 && (fs.statSync(path.join(renamedOut, 'shop-automation-framework', 'run.sh')).mode & 0o111) !== 0);
+const renamedExtract = tryZip(() => extractZip(renamedZip, renamedOut));
+check('AF. the renamed archive extracts', renamedExtract.ok && fs.existsSync(path.join(renamedOut, 'shop-automation-framework', 'run.sh')), renamedExtract.error);
+const storedMode = zipEntryMode(renamed, 'shop-automation-framework/run.sh');
+check('AG. a file keeps its permission bits (stored on the entry)', (storedMode & 0o111) !== 0, storedMode.toString(8));
 threw = false;
 try { zipFrameworkToBuffer(tree, '../escape'); } catch { threw = true; }
 check('AH. a root name that is not a plain folder name is refused', threw);
@@ -190,6 +199,38 @@ check('AH. a root name that is not a plain folder name is refused', threw);
 const inside = zipFrameworkToFile(tree, path.join(tree, 'shop-automation-framework.zip'), 'shop-automation-framework');
 const insideNames = names(fs.readFileSync(inside.zipPath));
 check('AI. a zip written inside its own source folder does not contain itself', !insideNames.some((n) => n.endsWith('.zip')) && insideNames.includes('shop-automation-framework/package.json'), insideNames.join(', '));
+
+// 9. Cross-check with a reader that is not the library that wrote the zip.
+// Optional by design: the suite must pass on a machine with no `unzip`, so
+// with none on PATH this prints a note and counts nothing.
+const probe = spawnSync('unzip', ['-v'], { encoding: 'utf8' });
+if (probe.error || probe.status !== 0) {
+  console.log('note  AJ did not run: no system unzip on PATH, so no reader other than adm-zip opened the archive in this run');
+} else {
+  const sysOut = path.join(tmpRoot, 'system-unzip-out');
+  const sys = spawnSync('unzip', ['-q', renamedZip, '-d', sysOut], { encoding: 'utf8' });
+  const sysRun = path.join(sysOut, 'shop-automation-framework', 'run.sh');
+  check('AJ. the system unzip opens the same archive, byte for byte, executable bit kept',
+    sys.status === 0 && fs.existsSync(sysRun) && fs.readFileSync(sysRun).equals(fs.readFileSync(path.join(tree, 'run.sh'))) && (process.platform === 'win32' || (fs.statSync(sysRun).mode & 0o111) !== 0), `${sys.status} ${sys.stderr}`);
+}
+
+// 10. No smoke and no script starts a system zip or unzip (this file's AJ aside).
+const startsZipTool = /\b(?:spawnSync|spawn|execFileSync|execFile|execSync|exec)\(\s*['"`](?:un)?zip\b/;
+const offenders: string[] = [];
+const scanForZipTool = (dir: string): void => {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const abs = path.join(dir, e.name);
+    if (e.isDirectory()) { if (e.name !== 'node_modules') scanForZipTool(abs); continue; }
+    if (!/\.(ts|mts|js|mjs|cjs)$/.test(e.name)) continue;
+    if (path.resolve(abs) === path.resolve(fileURLToPath(import.meta.url))) continue;
+    if (startsZipTool.test(fs.readFileSync(abs, 'utf8'))) offenders.push(path.relative(path.join(scriptsDir, '..'), abs));
+  }
+};
+scanForZipTool(scriptsDir);
+scanForZipTool(path.join(scriptsDir, '..', 'src'));
+check('AK. no file under scripts/ or src/ starts a system zip or unzip', offenders.length === 0, offenders.join(', '));
+const ownSource = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
+check('AK2. in this file only the optional cross-check AJ does (two unzip calls, no zip call)', (ownSource.match(/spawnSync\('unzip'/g) ?? []).length === 2 && !/spawnSync\('zip'/.test(ownSource));
 
 // Cleanup.
 fs.rmSync(tmpRoot, { recursive: true, force: true });

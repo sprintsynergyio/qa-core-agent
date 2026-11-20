@@ -15,7 +15,7 @@
  *
  * In-code fixtures and one child process. No network. No LLM. No browser.
  */
-import { parseVerdicts, gateByVerdicts, describeStep, renderValueForCritic, repairJson, CRITIC_SYSTEM_PROMPT, COMPARE_READING_RULES, completeVerdicts, criticMaxTokens, CRITIC_TOKENS_PER_VERDICT, CRITIC_SUMMARY_TOKENS, critique, REWORK_WITHOUT_FIX_NOTE, withReworkWithoutFix, type CriticClient, type ScenarioVerdict } from '../src/agent/critic.js';
+import { parseVerdicts, gateByVerdicts, describeStep, criticUserMessage, renderValueForCritic, repairJson, CRITIC_SYSTEM_PROMPT, COMPARE_READING_RULES, completeVerdicts, criticMaxTokens, CRITIC_TOKENS_PER_VERDICT, CRITIC_SUMMARY_TOKENS, critique, REWORK_WITHOUT_FIX_NOTE, withReworkWithoutFix, type CriticClient, type ScenarioVerdict } from '../src/agent/critic.js';
 import { UNIVERSAL_CLAIM_RULE } from '../src/agent/doctrine.js';
 import type Anthropic from '@anthropic-ai/sdk';
 import { EXPLORER_SYSTEM_PROMPT } from '../src/agent/runtime.js';
@@ -578,6 +578,38 @@ check('P5. both prompts carry rules 9 and 10 word for word', [EXPLORER_SYSTEM_PR
   const repairReview = scriptedCalls([respond([{ scenario: CONTACT, verdict: 'rework', reasons: ['one fix not applied'], required_fixes: [], fixes: [{ fix: 'f', applied: false, reason: 'not done' }], observations: [] }])]);
   await critique({ scenarios: [sc(CONTACT)], url: 'http://localhost:4200/', apiKey: 'fake', client: repairReview.client, repairFixes: new Map([[CONTACT, ['f']]]) });
   check('T10. the repair review is not re-asked for an empty required_fixes: it judges fixes, it lists none', repairReview.sent.length === 1, `${repairReview.sent.length} calls`);
+}
+
+/* ─── U. an assertion type this version cannot render (invariant 87) ─── */
+{
+  // A checkpoint written by another version can hold an assertion type this
+  // build does not know. Resuming it must render a line that says so, warn
+  // once, and never throw (it threw until this fix, which stopped the run).
+  const rec: SelectorRecord = { level: 'css', arg: '#x' } as SelectorRecord;
+  const unknownStep = { kind: 'assert', assertion: { type: 'toHaveFutureShape', target: rec, intent: 'x' } } as unknown as TraceStep;
+  const otherStep = { kind: 'assert', assertion: { type: 'toBeSomethingElse', target: rec, intent: 'x' } } as unknown as TraceStep;
+  const noTypeStep = { kind: 'assert', assertion: { target: rec, intent: 'x' } } as unknown as TraceStep;
+  const knownStep = { kind: 'assert', assertion: { type: 'toBeVisible', target: rec, intent: 'x', timeout: 10000 } } as unknown as TraceStep;
+  const warned: string[] = [];
+  const realWarn = console.warn;
+  console.warn = (...parts: unknown[]) => { warned.push(parts.map(String).join(' ')); };
+  let first = '', second = '', other = '', noType = '', message = '', threwU = '';
+  try {
+    first = describeStep(unknownStep);
+    second = describeStep(unknownStep);
+    other = describeStep(otherStep);
+    noType = describeStep(noTypeStep);
+    message = criticUserMessage([{ name: 'resumed scenario', category: 'happy', steps: [knownStep, unknownStep] }], 'http://localhost/');
+  } catch (e) {
+    threwU = (e as Error).message;
+  } finally {
+    console.warn = realWarn;
+  }
+  check('U1. an unknown assertion type renders "assert <type> (no rendering)" and does not throw', threwU === '' && first === 'assert toHaveFutureShape (no rendering)' && second === first, `${threwU} | ${first}`);
+  check('U2. one WARNING line per type per process, naming the type', warned.filter((w) => w.includes('"toHaveFutureShape"')).length === 1 && warned.every((w) => w.startsWith('WARNING: describeStep has no rendering for assertion type')), JSON.stringify(warned));
+  check('U3. another unknown type warns for itself, and a missing type reads "assert unknown (no rendering)"', other === 'assert toBeSomethingElse (no rendering)' && noType === 'assert unknown (no rendering)' && warned.length === 3, `${other} | ${noType} | ${warned.length}`);
+  check('U4. the Critic message for a scenario holding one still renders, the known assertion beside it unchanged',
+    message.includes('assert toHaveFutureShape (no rendering)') && message.includes(describeStep(knownStep)) && !describeStep(knownStep).includes('no rendering'), message.slice(0, 400));
 }
 
 console.log(`\n${pass}/${pass + fail} checks passed.`);

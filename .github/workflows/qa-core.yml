@@ -54,10 +54,8 @@ jobs:
       - name: Build the dashboard
         run: npm run dashboard:build
 
-      # The agent builds framework zips in process. The smokes read them back
-      # with the system unzip, and one builds a fixture with zip.
-      - name: Install zip and unzip
-        run: sudo apt-get update && sudo apt-get install -y zip unzip
+      # No zip or unzip package is installed: the agent builds framework zips in
+      # process and the smokes read them back the same way (adm-zip).
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium

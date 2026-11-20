@@ -492,6 +492,22 @@ export const COMPARE_RELATION_WORDS: Record<Exclude<CompareRelation, 'absent'>, 
 
 // Exported: the repair pass renders each rework scenario's recorded steps
 // with this same compact notation so the Explorer starts from what it did.
+const warnedUnrenderedTypes = new Set<string>();
+
+/**
+ * The Critic's line for an assertion type this version cannot render:
+ * `assert <type> (no rendering)`, plus one console warning per type per
+ * process. Never throws, so an old checkpoint cannot stop a resumed run.
+ */
+export function unrenderedAssertionLine(type: unknown): string {
+  const name = typeof type === 'string' && type.trim() ? type : 'unknown';
+  if (!warnedUnrenderedTypes.has(name)) {
+    warnedUnrenderedTypes.add(name);
+    console.warn(`WARNING: describeStep has no rendering for assertion type "${name}"; the Critic sees "assert ${name} (no rendering)" for it.`);
+  }
+  return `assert ${name} (no rendering)`;
+}
+
 export function describeStep(step: TraceStep): string {
   switch (step.kind) {
     case 'navigate': return `navigate(${step.url})`;
@@ -558,9 +574,11 @@ export function describeStep(step: TraceStep): string {
           return a.credential ? `assert ${where(a.target)} value=<credential:${a.credential}>${t}` : `assert ${where(a.target)} value="${a.value}"${t}`;
         }
       }
-      // Every assertion type returns above. A type added without a rendering
-      // must fail here, never fall through and read as a capture line.
-      throw new Error(`describeStep: no rendering for assertion type "${(a as { type: string }).type}"`);
+      // Every known assertion type returns above. A type with no rendering (a
+      // checkpoint written by another version, resumed after an upgrade) must
+      // not crash the run and must not read as a capture line or as a real
+      // assertion: the line says so, and one warning per type goes to stderr.
+      return unrenderedAssertionLine((a as { type?: unknown }).type);
     }
     case 'capture': {
       const what = step.source === 'attribute' ? `${step.attribute} of ${where(step.target)}` : step.source === 'count' ? `count of ${where(step.target)}` : `text of ${where(step.target)}`;
