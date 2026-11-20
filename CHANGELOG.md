@@ -38,3 +38,4 @@ Release readiness. Not tagged yet.
 ### Security
 
 - `npm audit --omit=dev` reports 0 vulnerabilities (it reported 1 critical, 4 high and 4 moderate before).
+- Dashboard package: `npm audit fix` raised source-map-js (high) and postcss-selector-parser (moderate) in the lockfile. `npm --prefix dashboard audit --omit=dev` now reports 2 moderate, both react-router 6, fixed only by react-router 7. Left on purpose, with two dev-only items: vite 5 in the dashboard (high, dev server only, fixed by vite 8) and esbuild in the root package (low, dev server on Windows only).
