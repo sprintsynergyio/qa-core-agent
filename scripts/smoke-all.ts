@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { failureReport } from './lib/smoke-report.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
@@ -37,7 +38,7 @@ const files = fs.readdirSync(scriptsDir)
   .filter((f) => /^smoke-.*\.ts$/.test(f) && f !== self)
   .sort();
 
-interface Result { name: string; pass: boolean; skipped: boolean; reason: string; ms: number; tail: string[] }
+interface Result { name: string; pass: boolean; skipped: boolean; reason: string; ms: number; output: string[] }
 
 const LIVE_MARK = '// @smoke-live';
 const liveAsked = process.env.QA_CORE_LIVE_SMOKES === '1';
@@ -86,7 +87,7 @@ function run(file: string): Promise<Result> {
       else if (code === 0) reason = 'no OK line';
       else reason = `exit ${String(code)}${okLine ? '' : ', no OK line'}`;
       const combined = (stdout + (stderr ? '\n[stderr]\n' + stderr : '')).split('\n').map((l) => l.trimEnd()).filter((l, i, a) => l.length > 0 || i === a.length - 1);
-      resolve({ name, pass, skipped: false, reason, ms, tail: combined.slice(-20) });
+      resolve({ name, pass, skipped: false, reason, ms, output: combined });
     });
   });
 }
@@ -99,7 +100,7 @@ const results: Result[] = [];
 for (const [i, file] of files.entries()) {
   const name = file.replace(/\.ts$/, '');
   if (!runLive && isLive(file)) {
-    results.push({ name, pass: false, skipped: true, reason: 'skipped (live)', ms: 0, tail: [] });
+    results.push({ name, pass: false, skipped: true, reason: 'skipped (live)', ms: 0, output: [] });
     console.log(`[${String(i + 1).padStart(2)}/${files.length}] skip  ${name.padEnd(34)} ${'live'.padStart(8)}`);
     continue;
   }
@@ -116,10 +117,9 @@ for (const r of results) console.log(`${r.name.padEnd(nameWidth)}  ${r.skipped ?
 
 const failed = results.filter((r) => !r.pass && !r.skipped);
 const skipped = results.filter((r) => r.skipped);
-for (const r of failed) {
-  console.log(`\n=== ${r.name}: ${r.reason}; last ${r.tail.length} line(s) of output ===`);
-  for (const l of r.tail) console.log(`  ${l}`);
-}
+// Every FAIL line first, whole, then the tail: the tail alone hid the failing
+// check of a smoke that prints a long table after its checks.
+for (const r of failed) for (const l of failureReport(r.name, r.reason, r.output)) console.log(l);
 
 const passed = results.length - failed.length - skipped.length;
 console.log(`\n${results.length} smokes, ${passed} passed, ${failed.length} failed, ${skipped.length} skipped (live)`);

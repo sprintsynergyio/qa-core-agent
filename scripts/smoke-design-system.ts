@@ -73,7 +73,17 @@ const sameYear = new Date().getFullYear();
 check('C4. formatDate: "5 Oct" this year, "5 Oct 2025" another year, "Today, HH:MM" today, "n/a" when missing or invalid', formatDate(`${sameYear}-10-05T09:00:00.000Z`).replace(/^Today, \d\d:\d\d$/, '5 Oct') === '5 Oct' && formatDate('2025-10-05T09:00:00.000Z') === '5 Oct 2025' && /^Today, \d\d:\d\d$/.test(formatDate(new Date().toISOString())) && formatDate(null) === 'n/a' && formatDate('nope') === 'n/a', JSON.stringify([formatDate(`${sameYear}-10-05T09:00:00.000Z`), formatDate('2025-10-05T09:00:00.000Z'), formatDate(new Date().toISOString())]));
 
 /* ─── fixture ─── */
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-core-design-'));
+// The fixture root is a long path on every machine. A real output root is long
+// (a home folder, a projects folder, the checkout), and macOS temp folders are
+// long by themselves: on Linux the old short /tmp path hid a Settings page that
+// scrolled sideways at 390, which then failed only on a Mac. One folder name is
+// a long run with no hyphen: a browser may break a line after a hyphen, so a
+// hyphenated path wraps by itself and would prove nothing (the first version of
+// this fixture passed on the unfixed page for that reason).
+const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-core-design-'));
+const UNBREAKABLE_FOLDER = 'AHomeFolderWithALongNameAndNoPlaceToBreakALineBecauseRealPathsCarryNoSpaces0123456789';
+const root = path.join(tmpBase, UNBREAKABLE_FOLDER, 'Projects', 'QaCoreAgentCheckoutForTheDesignSystemSmoke');
+fs.mkdirSync(root, { recursive: true });
 const output = path.join(root, 'output');
 const step = (url: string) => ({ kind: 'navigate', url });
 const slug = 'practicesoftwaretesting-com';
@@ -215,6 +225,18 @@ for (const theme of ['light', 'dark'] as const) {
     }
   }
   check(`B4. no page scrolls sideways at ${WIDTHS.join(', ')} (${pages.length} routes each, the run page once per stage tab)`, sideways.length === 0, sideways.join('; '));
+  // The long value itself: the output root on Settings at 390 is shown whole and wraps inside its box.
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`${base}/settings#token=${TOKEN}`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('[data-testid="setting-output-root"]');
+  const rootBox = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="setting-output-root"]') as HTMLElement;
+    const r = el.getBoundingClientRect();
+    return { text: (el.textContent ?? '').trim(), right: Math.round(r.right), height: Math.round(r.height), lineHeight: parseFloat(getComputedStyle(el).lineHeight), client: document.documentElement.clientWidth };
+  });
+  check(`B5. a long output root (${rootBox.text.length} characters, one run of ${UNBREAKABLE_FOLDER.length} with no space, hyphen or slash) is shown whole on Settings at 390 and wraps inside its box`,
+    rootBox.text.length >= 120 && rootBox.text.includes(UNBREAKABLE_FOLDER) && UNBREAKABLE_FOLDER.length >= 80 && rootBox.text.endsWith('output') && rootBox.right <= rootBox.client && rootBox.height >= rootBox.lineHeight * 2,
+    JSON.stringify(rootBox));
   await context.close();
 }
 console.log('\nSize counts by route (visible text elements):');
@@ -240,7 +262,7 @@ check(`C5. formatDate renders the same string under a browser locale of en-US an
 
 await browser.close();
 killGw();
-fs.rmSync(root, { recursive: true, force: true });
+fs.rmSync(tmpBase, { recursive: true, force: true });
 console.log(`\n${pass}/${pass + fail} checks passed.`);
 if (fail > 0) process.exit(1);
 console.log('OK: the dashboard uses one seven-size scale, three weights and two families on every route in both themes, and the formatter renders the same strings under any browser locale.');

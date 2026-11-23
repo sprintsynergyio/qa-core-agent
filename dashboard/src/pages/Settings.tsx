@@ -73,9 +73,10 @@ export function SettingsPage() {
 
 function Row({ label, value, mono, testid }: { label: string; value: string; mono?: boolean; testid: string }) {
   return (
-    <div className="flex flex-col rounded-md border border-line bg-bg-2 px-3 py-2">
+    <div className="flex min-w-0 flex-col rounded-md border border-line bg-bg-2 px-3 py-2">
       <dt className="text-caption font-medium text-fg-2">{label}</dt>
-      <dd className={`text-body text-fg ${mono ? 'mono' : ''}`} data-testid={testid}>{value}</dd>
+      {/* A real output root is a long path with no spaces: it wraps inside the box, never widens the page. */}
+      <dd className={`break-all text-body text-fg ${mono ? 'mono' : ''}`} data-testid={testid}>{value}</dd>
     </div>
   );
 }

@@ -18,6 +18,7 @@ Release readiness. Not tagged yet.
 - CI runs the whole smoke suite on Node 22 and Node 24, after typecheck, lint and the dashboard build. The live smokes stay skipped.
 - More checks in `smoke-zip` for the in-process zip: no `zip` command needed, forward-slash entry names, the renamed root folder, the exclude patterns, permission bits and a symlink loop.
 - `smoke-mcp-version`: starts the real MCP server, connects a client over stdio and checks that the version it reports equals `package.json`'s.
+- The suite runner lists every `FAIL` line of a failed smoke, whole, before the last 20 lines of output. The tail alone could hide the failing check (`smoke-runner-report`).
 
 ### Changed
 
@@ -36,6 +37,10 @@ Release readiness. Not tagged yet.
 - The Critic's step rendering no longer throws on an assertion type it does not know: it writes `assert <type> (no rendering)` and logs one warning per type, so a checkpoint written by another version cannot stop a resumed run.
 - OpenClaw is described as an optional integration. The README no longer says the project is distributed through it.
 - CLAUDE.md describes `.mcp.json` and `.claude/skills/` as optional local files that each contributor creates and git ignores.
+
+### Fixed
+
+- Settings page: a long output root (a path with no spaces) wraps inside its box. It made the page scroll sideways, at phone width on macOS and at any width for a long enough path. `smoke-design-system` now uses a long fixture path on every machine, so Linux CI sees what a Mac sees.
 
 ### Removed
 
