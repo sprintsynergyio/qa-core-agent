@@ -71,8 +71,24 @@ export interface PlannerClient {
 /** The actions as the Planner and the Explorer read them: "click an item" for the item hop, else the control. */
 export function reachActionsText(actions: ReachAction[]): string {
   // The item hop (invariant 78) records the item link it clicked; name it.
-  return actions.map((a) => (a.via === 'item-link' ? (a.control ? `click the item ${a.control} by its visible name` : 'click an item by its visible name') : a.kind === 'login' ? 'sign in' : `click ${a.control ?? 'the control'}`)).join(', then ');
+  return actions.map((a) => (a.via === 'item-link' ? (a.control ? `click the item ${a.control} by its visible name` : 'click an item by its visible name') : a.kind === 'login' ? SIGN_IN_STEP : `click ${a.control ?? 'the control'}`)).join(', then ');
 }
+
+/**
+ * The sign-in step of a page behind the sign-in, as the Planner and the
+ * Explorer read it (invariant 88): the dedicated test account, both fields by
+ * credential marker, never a typed value (invariant 70).
+ */
+export const SIGN_IN_STEP = 'sign in with the test account (fill the identifier with credential "user" and the password with credential "pass", no value, then submit)';
+
+/**
+ * The extra lines of the Planner block for a page behind the sign-in: what a
+ * signed-in user sees or does there, and what is never planned because the
+ * one test account is used by every later stage and run.
+ */
+export const BEHIND_SIGN_IN_GUIDANCE = `This page is behind the sign-in. The Explorer signs in with the dedicated test account by credential marker; never plan a typed email or password for it.
+Plan what a signed-in user sees or does on this page. Begin each scenario name with "signed in," and name only what is on this page, never the email or password field of the login form.
+Never plan a scenario that changes the account's password or its sign-in email or username, or that deletes or closes the account: every later stage and every later run signs in with the same account.`;
 
 /** The path of a URL, or the URL when it does not parse. */
 function urlPath(url: string): string {
@@ -91,7 +107,7 @@ export function reachedByBlock(revealedUrl: string, reachedBy: { origin: string;
   const path = urlPath(revealedUrl);
   return `This page exists only after an action: it was reached from ${reachedBy.origin} by these steps: ${reachActionsText(reachedBy.actions)}. The snapshot above is the page after those steps.
 Plan every scenario to start on ${reachedBy.origin}, perform those steps, and then do what the scenario tests on ${path}. Name the steps in the scenario when they matter (e.g. "added an item to the cart, opened the cart and ...").
-Never plan a scenario that opens ${path} by its URL, signed out or otherwise: the Explorer never navigates to ${path} directly.`;
+Never plan a scenario that opens ${path} by its URL, signed out or otherwise: the Explorer never navigates to ${path} directly.${reachedBy.actions.some((a) => a.kind === 'login') ? `\n${BEHIND_SIGN_IN_GUIDANCE}` : ''}`;
 }
 
 /**

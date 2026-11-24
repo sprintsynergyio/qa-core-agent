@@ -18,7 +18,7 @@ import { totalCost, COST_CLOSEOUT_GRACE_USD } from './cost-total.js';
 import { costOf } from './pricing.js';
 import { exploreStageModels, unknownModelRefusal } from './stage-models.js';
 import { discoverPages, discoveryFeatureList, fetchRobots, robotsBlockedFeatures, robotsDisallowedDetails, writeDiscoveryJson } from './discovery.js';
-import { detectStateFeatures, probeRuleReasons, runStateProbes } from './state-probe.js';
+import { detectLoginFeatures, detectStateFeatures, probeRuleReasons, runStateProbes } from './state-probe.js';
 import type { PlannedPageEntry } from './planned-page.js';
 import { buildPlanTargets, planAcrossPages, ruleRetryLine, PER_PAGE_SCENARIO_CAP, GLOBAL_PLAN_CAP } from './plan-pages.js';
 import { filterPages, FILTERED_SOURCES, MAX_PAGES_WITH_FEATURES } from './page-filter.js';
@@ -262,6 +262,10 @@ export interface ExploreOptions {
   accountSkipReason?: string;
   /** Test seam: replaces the browser login preflight. */
   preflight?: typeof preflightLogin;
+  /** Test seam: replaces the sign-in of the login probe (invariant 88). */
+  probeSignIn?: NonNullable<NonNullable<Parameters<typeof runStateProbes>[0]['login']>['signIn']>;
+  /** Test seam: the page factory of the state and login probes. */
+  probeOpenPage?: NonNullable<Parameters<typeof runStateProbes>[0]['openPage']>;
   /**
    * The Critic seam: replaces `critique` for the first review AND the repair
    * review, so the whole repair block runs with a fixture Critic
@@ -1072,19 +1076,31 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
     // SRS or user rung won before robots.txt was read.
     const probeMap = opts.requirements;
     const probeTokens = probeMap ? featureTokenMap(probeMap) : undefined;
-    const probes = probeMap && detectStateFeatures(probeMap, disc.pages, probeTokens).length > 0
+    // The login action (invariant 88): with a test account the probe signs
+    // in once and reveals the pages behind the sign-in; with none, a feature
+    // with no page whose tokens name an account page is recorded as not
+    // looked for. The preflight already proved the account signs in.
+    const loginProbe: NonNullable<Parameters<typeof runStateProbes>[0]['login']> = testCredentials
+      ? { access: { url: opts.url, ...(opts.loginUrl ? { loginUrl: opts.loginUrl } : {}), user: testCredentials.user, pass: testCredentials.pass }, ...(opts.features ? { names: opts.features } : {}), ...(opts.probeSignIn ? { signIn: opts.probeSignIn } : {}) }
+      : { unavailable: accountSkipReason };
+    const loginWanted = testCredentials
+      ? !probeMap || detectLoginFeatures(probeMap, disc.pages, probeTokens).length > 0
+      : detectLoginFeatures(probeMap, disc.pages, probeTokens).some((f) => f.carriedBy.length === 0 && f.gatedTokens);
+    const probes: Awaited<ReturnType<typeof runStateProbes>> = (probeMap && detectStateFeatures(probeMap, disc.pages, probeTokens).length > 0) || loginWanted
       ? await runStateProbes({
           map: probeMap,
           candidates: disc.pages,
           ...(disc.pageControls ? { pageControls: disc.pageControls } : {}),
           robots: disc.robots ?? await fetchRobots(new URL(opts.url)),
           ...(probeTokens ? { featureTokens: probeTokens } : {}),
+          ...(loginWanted ? { login: loginProbe } : {}),
+          ...(opts.probeOpenPage ? { openPage: opts.probeOpenPage } : {}),
         })
       : { probes: [], revealed: [], blocked: [], lines: [] };
     for (const line of probes.lines) opts.onEvent?.({ type: 'message', text: line });
     const planned = buildPlanTargets({ pages, map: opts.requirements, features: opts.features, revealed: probes.revealed, blocked: probes.blocked, candidates: disc.pages });
     pages = planned.pages;
-    discoveryInfo = { method: disc.method, pages, candidates, warnings: disc.warnings, ...(disc.robotsSkipped ? { robotsSkipped: disc.robotsSkipped } : {}), ...(probes.probes.length > 0 ? { stateProbes: probes.probes } : {}) };
+    discoveryInfo = { method: disc.method, pages, candidates, warnings: disc.warnings, ...(disc.robotsSkipped ? { robotsSkipped: disc.robotsSkipped } : {}), ...(probes.probes.length > 0 ? { stateProbes: probes.probes } : {}), ...(probes.loginProbe ? { loginProbe: probes.loginProbe } : {}) };
     try {
       writeDiscoveryJson(opts.outDir, discoveryInfo);
     } catch (err) {

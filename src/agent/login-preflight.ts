@@ -95,89 +95,101 @@ async function tryPage(page: Page, url: string, tried: string[], waitMs: number)
   return hasPasswordField(page);
 }
 
-export async function preflightLogin(opts: PreflightLoginOptions): Promise<PreflightLoginResult> {
+/**
+ * Sign in on a page the caller owns: find the login form, fill the account,
+ * submit, and wait for a positive signal. On `ok` the page is left signed in
+ * on whatever the site shows after the submit, so the caller can go on in the
+ * same context (the login probe, invariant 88). `hooks.beforeSubmit` runs on
+ * the login page before anything is typed, while the session is still signed
+ * out. Never prints or returns a credential value.
+ */
+export async function signInOn(page: Page, opts: PreflightLoginOptions, hooks?: { beforeSubmit?: (page: Page) => Promise<void> }): Promise<PreflightLoginResult> {
   const tried: string[] = [];
   const lines: string[] = [];
+  // Reach the login page: --login-url, the URL itself, a login link on it, or a common path.
+  let loginUrl: string | null = null;
+  let first: string | undefined;
+  try { first = opts.loginUrl ? new URL(opts.loginUrl, opts.url).toString() : undefined; } catch { first = opts.loginUrl; }
+  try {
+    if (first && await tryPage(page, first, tried, 10_000)) loginUrl = page.url();
+    if (!loginUrl && await tryPage(page, opts.url, tried, 3_000)) loginUrl = page.url();
+    if (!loginUrl && tried.length > 0) {
+      const link = page.getByRole('link', { name: LOGIN_LINK_RE }).first();
+      if ((await link.count().catch(() => 0)) > 0) {
+        await link.click();
+        await page.waitForLoadState('domcontentloaded');
+        tried.push(page.url());
+        await page.locator('input[type="password"]').first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined);
+        if (await hasPasswordField(page)) loginUrl = page.url();
+      }
+    }
+    if (!loginUrl) {
+      let origin: string;
+      try { origin = new URL(opts.url).origin; } catch { origin = ''; }
+      for (const p of origin ? LOGIN_PATHS : []) {
+        if (await tryPage(page, origin + p, tried, 5_000)) { loginUrl = page.url(); break; }
+      }
+    }
+  } catch (err) {
+    lines.push(`PAGE NOT REACHED: ${(err as Error).message}`);
+    return { outcome: 'unreached', tried, pageText: [], lines };
+  }
+  if (!loginUrl) {
+    lines.push(`PAGE NOT REACHED: no page with a password field was found (tried ${tried.join(', ')}).`);
+    return { outcome: 'unreached', tried, pageText: [], lines };
+  }
+  lines.push(`login page: ${loginUrl}`);
+  const password = page.locator('input[type="password"]').first();
+  const form = password.locator('xpath=ancestor::form[1]');
+  const scope = (await form.count()) > 0 ? form : page.locator('body');
+  const identifier = scope.locator('input[type="email"], input[name*="email" i], input[id*="email" i], input[name*="user" i], input[id*="user" i], input[name*="login" i], input[type="text"]').first();
+  if ((await identifier.count()) === 0) {
+    const text = 'the login page has a password field but no identifier field could be found';
+    lines.push(`LOGIN FAILED: ${text}.`);
+    return { outcome: 'failed', loginUrl, tried, pageText: [text], lines };
+  }
+  const loginPath = new URL(loginUrl).pathname;
+  // What the login page already shows: none of it can be the success signal.
+  const before = new Set(await loggedInCandidates(page));
+  if (hooks?.beforeSubmit) await hooks.beforeSubmit(page);
+  await identifier.fill(opts.user);
+  await password.fill(opts.pass);
+  const submit = scope.locator('button[type="submit"], input[type="submit"], button:has-text("Login"), button:has-text("Log in"), button:has-text("Sign in")').first();
+  if ((await submit.count()) > 0) await submit.click();
+  else await password.press('Enter');
+
+  // A positive signal: the URL left the login page, or a logged-in element
+  // appeared. Silence is not success.
+  const deadline = Date.now() + (opts.signalTimeoutMs ?? 15_000);
+  let signal: string | null = null;
+  while (Date.now() < deadline && !signal) {
+    const now = new URL(page.url());
+    if (now.pathname !== loginPath) signal = `URL changed to ${now.pathname}`;
+    else {
+      const fresh = (await loggedInCandidates(page)).find((t) => !before.has(t));
+      if (fresh !== undefined) signal = `logged-in element "${fresh}" appeared after submit (not on the login page before)`;
+    }
+    if (!signal) await page.waitForTimeout(300);
+  }
+  if (signal) {
+    lines.push(`LOGIN OK (signal: ${signal})`);
+    return { outcome: 'ok', loginUrl, tried, signal, pageText: [], lines };
+  }
+  const errors = await visibleErrors(page);
+  lines.push(`LOGIN FAILED (no positive signal within ${Math.round((opts.signalTimeoutMs ?? 15_000) / 1000)} s; still at ${page.url()})`);
+  if (errors.length > 0) for (const e of errors) lines.push(`  page says: ${e}`);
+  else lines.push('  page shows no visible error text');
+  return { outcome: 'failed', loginUrl, tried, pageText: errors.length > 0 ? errors : [`no visible error text; still at ${page.url()}`], lines };
+}
+
+export async function preflightLogin(opts: PreflightLoginOptions): Promise<PreflightLoginResult> {
   const browser = await chromium.launch({ headless: true });
   try {
     const context = await browser.newContext();
     await installEvalShim(context);
     const page = await context.newPage();
     page.setDefaultTimeout(15_000);
-
-    // Reach the login page: --login-url, the URL itself, a login link on it, or a common path.
-    let loginUrl: string | null = null;
-    let first: string | undefined;
-    try { first = opts.loginUrl ? new URL(opts.loginUrl, opts.url).toString() : undefined; } catch { first = opts.loginUrl; }
-    try {
-      if (first && await tryPage(page, first, tried, 10_000)) loginUrl = page.url();
-      if (!loginUrl && await tryPage(page, opts.url, tried, 3_000)) loginUrl = page.url();
-      if (!loginUrl && tried.length > 0) {
-        const link = page.getByRole('link', { name: LOGIN_LINK_RE }).first();
-        if ((await link.count().catch(() => 0)) > 0) {
-          await link.click();
-          await page.waitForLoadState('domcontentloaded');
-          tried.push(page.url());
-          await page.locator('input[type="password"]').first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => undefined);
-          if (await hasPasswordField(page)) loginUrl = page.url();
-        }
-      }
-      if (!loginUrl) {
-        let origin: string;
-        try { origin = new URL(opts.url).origin; } catch { origin = ''; }
-        for (const p of origin ? LOGIN_PATHS : []) {
-          if (await tryPage(page, origin + p, tried, 5_000)) { loginUrl = page.url(); break; }
-        }
-      }
-    } catch (err) {
-      lines.push(`PAGE NOT REACHED: ${(err as Error).message}`);
-      return { outcome: 'unreached', tried, pageText: [], lines };
-    }
-    if (!loginUrl) {
-      lines.push(`PAGE NOT REACHED: no page with a password field was found (tried ${tried.join(', ')}).`);
-      return { outcome: 'unreached', tried, pageText: [], lines };
-    }
-    lines.push(`login page: ${loginUrl}`);
-    const password = page.locator('input[type="password"]').first();
-    const form = password.locator('xpath=ancestor::form[1]');
-    const scope = (await form.count()) > 0 ? form : page.locator('body');
-    const identifier = scope.locator('input[type="email"], input[name*="email" i], input[id*="email" i], input[name*="user" i], input[id*="user" i], input[name*="login" i], input[type="text"]').first();
-    if ((await identifier.count()) === 0) {
-      const text = 'the login page has a password field but no identifier field could be found';
-      lines.push(`LOGIN FAILED: ${text}.`);
-      return { outcome: 'failed', loginUrl, tried, pageText: [text], lines };
-    }
-    const loginPath = new URL(loginUrl).pathname;
-    // What the login page already shows: none of it can be the success signal.
-    const before = new Set(await loggedInCandidates(page));
-    await identifier.fill(opts.user);
-    await password.fill(opts.pass);
-    const submit = scope.locator('button[type="submit"], input[type="submit"], button:has-text("Login"), button:has-text("Log in"), button:has-text("Sign in")').first();
-    if ((await submit.count()) > 0) await submit.click();
-    else await password.press('Enter');
-
-    // A positive signal: the URL left the login page, or a logged-in element
-    // appeared. Silence is not success.
-    const deadline = Date.now() + (opts.signalTimeoutMs ?? 15_000);
-    let signal: string | null = null;
-    while (Date.now() < deadline && !signal) {
-      const now = new URL(page.url());
-      if (now.pathname !== loginPath) signal = `URL changed to ${now.pathname}`;
-      else {
-        const fresh = (await loggedInCandidates(page)).find((t) => !before.has(t));
-        if (fresh !== undefined) signal = `logged-in element "${fresh}" appeared after submit (not on the login page before)`;
-      }
-      if (!signal) await page.waitForTimeout(300);
-    }
-    if (signal) {
-      lines.push(`LOGIN OK (signal: ${signal})`);
-      return { outcome: 'ok', loginUrl, tried, signal, pageText: [], lines };
-    }
-    const errors = await visibleErrors(page);
-    lines.push(`LOGIN FAILED (no positive signal within ${Math.round((opts.signalTimeoutMs ?? 15_000) / 1000)} s; still at ${page.url()})`);
-    if (errors.length > 0) for (const e of errors) lines.push(`  page says: ${e}`);
-    else lines.push('  page shows no visible error text');
-    return { outcome: 'failed', loginUrl, tried, pageText: errors.length > 0 ? errors : [`no visible error text; still at ${page.url()}`], lines };
+    return await signInOn(page, opts);
   } finally {
     await browser.close();
   }

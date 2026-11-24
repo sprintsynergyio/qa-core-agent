@@ -10,7 +10,7 @@ import { sameValuePoll } from './parse-number.js';
 import { absentCounterReadExpr, compareReadsAbsentAsZero, usesAbsentCounter } from './absent-counter.js';
 import { captureWaitNeeded } from './capture-ready.js';
 import { deriveDatasets, renderDatasetJson, recordedSelects, type DatasetCase, type FeatureDataset } from './datasets.js';
-import { AUTH_ENV_PASS, AUTH_ENV_USER, envVarForFill, findHappyLoginScenario, loginFeatureOf, recordedCredentials, reportUsesTestAccount, sessionGroups, stripLeadingLogin, type AuthCredentials } from './auth-emit.js';
+import { AUTH_ENV_PASS, AUTH_ENV_USER, envVarForFill, findHappyLoginScenario, loginFeatureOf, recordedCredentials, reportUsesTestAccount, sessionGroups, sessionSteps, stripLeadingLogin, type AuthCredentials } from './auth-emit.js';
 import { LOGIN_SEQUENCE_COMMENT, LOGIN_SEQUENCE_TITLE, SERIAL_MODE_LINE, loginSequence, withWrongPasswordBesideLogin } from './login-order.js';
 import type { RequirementsMap } from './requirements.js';
 import type { Assertion, CaptureSource, GenerateKind, RunReport, Scenario, SelectorRecord, TraceStep } from './trace.js';
@@ -129,7 +129,7 @@ export function transcribePOM(opts: POMTranscribeOptions): POMTranscribeResult {
     ? {
         ...base,
         scenarios: base.scenarios.map((s) =>
-          session.has(groupKeyOf(s, base.url)) ? { ...s, steps: stripLeadingLogin(s.steps) } : s,
+          session.has(groupKeyOf(s, base.url)) ? { ...s, steps: sessionSteps(s) ?? stripLeadingLogin(s.steps) } : s,
         ),
       }
     : base;

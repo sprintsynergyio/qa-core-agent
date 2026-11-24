@@ -63,9 +63,17 @@ type FillStep = Extract<TraceStep, { kind: 'fill' }>;
  * emitted framework changes, the emitter-only guarantee).
  */
 export function findHappyLoginScenario(report: Pick<RunReport, 'scenarios'>): Scenario | null {
-  const marked = report.scenarios.find((s) =>
+  const marked = report.scenarios.filter((s) =>
     s.category === 'happy' && s.steps.some((st) => st.kind === 'fill' && st.credential === 'pass'));
-  if (marked) return marked;
+  // A test of a page behind the sign-in signs in by marker too (invariant
+  // 88): the setup replays the scenario that is the sign-in and nothing
+  // more, when there is one, whatever its place in the report. A test of
+  // the page the sign-in lands on has the same steps and carries
+  // signedInUrl, which the tool stamps only on a scenario planned behind
+  // the sign-in, so it is never taken for the login test.
+  const pure = marked.find((s) => stripLeadingLogin(s.steps).length === 0 && !s.signedInUrl);
+  if (pure) return pure;
+  if (marked[0]) return marked[0];
   return report.scenarios.find((s) =>
     s.feature === 'login' &&
     s.category === 'happy' &&
@@ -147,6 +155,16 @@ export function recordedCredentials(login: Scenario): AuthCredentials {
  * unchanged.
  */
 export function stripLeadingLogin(steps: TraceStep[]): TraceStep[] {
+  const cut = leadingLogin(steps);
+  return cut ? steps.slice(cut.end) : steps;
+}
+
+/**
+ * The leading login of a recording: `submitEnd` is the index just past its
+ * submit, `end` the index just past the success assertions that follow the
+ * submit. Null when the recording has no leading login.
+ */
+export function leadingLogin(steps: TraceStep[]): { submitEnd: number; end: number } | null {
   // Find a password fill within the leading action region.
   let passIdx = -1;
   for (let i = 0; i < steps.length; i++) {
@@ -154,9 +172,9 @@ export function stripLeadingLogin(steps: TraceStep[]): TraceStep[] {
     if (st.kind === 'fill' && (st.credential === 'pass' || CREDENTIAL_PASS_RE.test(st.target.intent))) { passIdx = i; break; }
     // Only navigates, fills, clicks, presses, waits, and checkpoints may
     // precede the login submit; anything else means no leading login block.
-    if (!['navigate', 'fill', 'click', 'press', 'wait', 'stability_wait', 'checkpoint'].includes(st.kind)) return steps;
+    if (!['navigate', 'fill', 'click', 'press', 'wait', 'stability_wait', 'checkpoint'].includes(st.kind)) return null;
   }
-  if (passIdx === -1) return steps;
+  if (passIdx === -1) return null;
   // The submit that follows the password fill.
   let submitIdx = -1;
   for (let i = passIdx + 1; i < steps.length; i++) {
@@ -164,7 +182,7 @@ export function stripLeadingLogin(steps: TraceStep[]): TraceStep[] {
     if (st.kind === 'click' || st.kind === 'press') { submitIdx = i; break; }
     if (st.kind !== 'fill' && st.kind !== 'wait' && st.kind !== 'stability_wait' && st.kind !== 'checkpoint') break;
   }
-  if (submitIdx === -1) return steps;
+  if (submitIdx === -1) return null;
   // Drop login-success assertions directly after the submit, up to the next action.
   let end = submitIdx;
   for (let i = submitIdx + 1; i < steps.length; i++) {
@@ -172,7 +190,38 @@ export function stripLeadingLogin(steps: TraceStep[]): TraceStep[] {
     if (st.kind === 'assert' || st.kind === 'wait_for_state') { end = i; continue; }
     break;
   }
-  return steps.slice(end + 1);
+  return { submitEnd: submitIdx + 1, end: end + 1 };
+}
+
+/** True when the steps hold a check (invariant 1: every emitted test asserts something). */
+function hasCheck(steps: TraceStep[]): boolean {
+  return steps.some((st) => st.kind === 'assert' || st.kind === 'assert_compare');
+}
+
+/**
+ * The steps a recording runs on the saved session (invariant 88), or null
+ * when it cannot run there: it has no leading login, or removing the login
+ * would leave a test with no check and no page to open.
+ *
+ * The leading login goes, with the success assertions after its submit, as
+ * before. Two things are new. When that would leave no check at all (a test
+ * of the page the sign-in lands on is the sign-in plus its checks), the
+ * checks after the submit are the test and they stay. And when the first
+ * step left is not a navigate, the test opens the page the recording was on
+ * at that step (`signedInUrl`, read off the browser by the tool), because a
+ * saved session starts on no page at all; a recording without it opens the
+ * spec's own URL, as before.
+ */
+export function sessionSteps(s: Pick<Scenario, 'steps' | 'signedInUrl'>): TraceStep[] | null {
+  const cut = leadingLogin(s.steps);
+  if (!cut) return null;
+  let body = s.steps.slice(cut.end);
+  if (!hasCheck(body)) {
+    body = s.steps.slice(cut.submitEnd);
+    if (!hasCheck(body) || !s.signedInUrl) return null;
+  }
+  if (s.signedInUrl && body[0]?.kind !== 'navigate') body = [{ kind: 'navigate', url: s.signedInUrl }, ...body];
+  return body;
 }
 
 /**
@@ -182,11 +231,13 @@ export function stripLeadingLogin(steps: TraceStep[]): TraceStep[] {
  * 'user'). On a report written before the marker (`markers` false), the
  * leading login stripLeadingLogin finds by its password intent.
  */
-export function signedInAtStart(s: Pick<Scenario, 'steps'>, markers: boolean): boolean {
-  const rest = stripLeadingLogin(s.steps);
-  if (rest.length === s.steps.length) return false;
+export function signedInAtStart(s: Pick<Scenario, 'steps' | 'signedInUrl'>, markers: boolean): boolean {
+  // A recording that cannot run on the session (sessionSteps null: the login
+  // removed would leave no check) runs signed out with its own sign-in.
+  if (!sessionSteps(s)) return false;
   if (!markers) return true;
-  return s.steps.slice(0, s.steps.length - rest.length).some((st) => st.kind === 'fill' && st.credential === 'user');
+  const cut = leadingLogin(s.steps)!;
+  return s.steps.slice(0, cut.end).some((st) => st.kind === 'fill' && st.credential === 'user');
 }
 
 /**
@@ -197,7 +248,7 @@ export function signedInAtStart(s: Pick<Scenario, 'steps'>, markers: boolean): b
  * session while every one of those recordings ran signed out with storage
  * cleared (invariant 4).
  */
-export function sessionGroups(groups: Array<{ key: string; scenarios: Array<Pick<Scenario, 'steps'>> }>, loginFeature: string, markers: boolean): Set<string> {
+export function sessionGroups(groups: Array<{ key: string; scenarios: Array<Pick<Scenario, 'steps' | 'signedInUrl'>> }>, loginFeature: string, markers: boolean): Set<string> {
   return new Set(groups
     .filter((g) => g.key !== loginFeature && g.scenarios.length > 0 && g.scenarios.every((s) => signedInAtStart(s, markers)))
     .map((g) => g.key));
