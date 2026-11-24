@@ -24,9 +24,9 @@ import { parseGatewayCommand } from '../src/server/commands.js';
 import { loadReportForUi } from '../src/server/runs.js';
 import { newRunId } from '../src/agent/output-layout.js';
 import { resumeCommand, transcribeCommand } from '../dashboard/src/lib/command.js';
-import { spawnSync } from 'node:child_process';
 import { runTranscribeRequest } from '../src/server/run-explore.js';
 import { appendRunNote } from '../src/server/events.js';
+import { zipEntryNames } from './lib/zip-read.js';
 
 let pass = 0;
 let fail = 0;
@@ -48,11 +48,7 @@ check('A4. a path with a space is quoted so it stays one token', parseGatewayCom
 
 /* ─── transcribe writes only the zip ─── */
 const FRAMEWORK_ROOT = 'saucedemo-automation-framework/';
-const zipEntries = (zipPath: string): string[] => {
-  const out = spawnSync('unzip', ['-Z1', zipPath], { encoding: 'utf8' });
-  if (out.status !== 0) throw new Error(`unzip failed: ${out.stderr}`);
-  return out.stdout.split('\n').filter(Boolean).sort();
-};
+const zipEntries = (zipPath: string): string[] => zipEntryNames(zipPath).sort();
 const snapshot = (dir: string): Record<string, string> => Object.fromEntries(fs.readdirSync(dir).filter((f) => fs.statSync(path.join(dir, f)).isFile()).map((f) => [f, fs.readFileSync(path.join(dir, f)).toString('base64')]));
 /** Transcribe a copy of `srcDir` twice and assert only the zip and events.jsonl changed; returns the second entry list. */
 function transcribeOnlyTheZip(tag: string, srcDir: string, srsName: string): string[] {

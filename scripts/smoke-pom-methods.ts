@@ -130,7 +130,7 @@ try {
     const tools = body('searched the tools page for pliers');
     const garden = body('searched the garden page for a hose');
     check(`A6. ${e.language}: no dataset loop took the scenarios (each is its own test)`, !specFile.includes('dataCases') && /test\("\[happy\] searched the tools page/.test(specFile), specFile);
-    check(`B1. ${e.language}: no beforeEach goto (the scenarios start on two URLs)`, !/beforeEach[\s\S]*?\.goto\(/.test(specFile.split('test(')[0] + (specFile.match(/test\.beforeEach\([\s\S]*?\n  \}\);/)?.[0] ?? '')), specFile);
+    check(`B1. ${e.language}: no beforeEach goto (the scenarios start on two URLs)`, !/beforeEach[\s\S]*?\.goto\(/.test(specFile.split('test(')[0] + (specFile.match(/test\.beforeEach\([\s\S]*?\n {2}\}\);/)?.[0] ?? '')), specFile);
     check(`B2. ${e.language}: the tools test opens /tools, then calls searchAction`,
       tools[0] === `await page.goto("${base}/tools");` && tools[1] === 'await cataloguePage.searchAction("pliers");', JSON.stringify(tools));
     check(`B3. ${e.language}: the garden test opens /garden, then calls searchAction`,

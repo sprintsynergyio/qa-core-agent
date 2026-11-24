@@ -13,7 +13,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { spawnSync } from 'node:child_process';
 import { chromium } from 'playwright';
 import { scaffold, frameworkDirName } from '../src/agent/scaffold.js';
 import { zipFrameworkToBuffer } from '../src/agent/zip-framework.js';
@@ -23,6 +22,7 @@ import { indexOutput } from '../src/server/db/indexer.js';
 import { createApiHandler } from '../src/server/api.js';
 import { createStaticHandler } from '../src/server/static.js';
 import type { RunReport } from '../src/agent/trace.js';
+import { tryZip, zipEntryNames } from './lib/zip-read.js';
 
 let pass = 0;
 let fail = 0;
@@ -60,7 +60,7 @@ fs.mkdirSync(runDir, { recursive: true });
 fs.writeFileSync(path.join(runDir, 'run-report.json'), JSON.stringify(report, null, 2));
 fs.writeFileSync(path.join(runDir, `${frameworkDirName(url)}.zip`), zipBuf);
 fs.rmSync(build, { recursive: true, force: true });
-const fixtureEntries = spawnSync('unzip', ['-Z1', path.join(runDir, `${frameworkDirName(url)}.zip`)], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
+const fixtureEntries = zipEntryNames(path.join(runDir, `${frameworkDirName(url)}.zip`));
 check('A. the fixture zip is a real archive rooted at the framework name', zipBuf.length > 1000 && fixtureEntries.length > 5 && fixtureEntries.every((e) => e.startsWith(`${frameworkDirName(url)}/`)), JSON.stringify(fixtureEntries.slice(0, 5)));
 
 /* ─── serve it ─── */
@@ -92,8 +92,9 @@ await download.saveAs(saved);
 const downloaded = fs.readFileSync(saved);
 check('D. the browser download names the framework zip', download.suggestedFilename() === `${frameworkDirName(url)}.zip`, download.suggestedFilename());
 check('E. the downloaded bytes equal the zip in the run folder', downloaded.equals(zipBuf), `${downloaded.length} vs ${zipBuf.length} bytes`);
-const listing = spawnSync('unzip', ['-l', saved], { encoding: 'utf8' });
-check('F. the downloaded file is a real zip with the framework under its root', listing.status === 0 && new RegExp(`${frameworkDirName(url)}/package\\.json`).test(listing.stdout) && new RegExp(`${frameworkDirName(url)}/tests/`).test(listing.stdout), listing.stdout.slice(0, 300));
+const listing = tryZip(() => zipEntryNames(saved));
+const savedNames = listing.ok ? listing.value : [];
+check('F. the downloaded file is a real zip with the framework under its root', listing.ok && savedNames.includes(`${frameworkDirName(url)}/package.json`) && savedNames.some((n) => n.startsWith(`${frameworkDirName(url)}/tests/`)), listing.ok ? JSON.stringify(savedNames.slice(0, 8)) : listing.error);
 check('G. zero console errors', errors.filter((e) => !/404|WebSocket|Failed to load resource/.test(e)).length === 0, errors.join(' | '));
 
 await browser.close();

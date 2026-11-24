@@ -98,8 +98,6 @@ export function isCredentialFill(step: Extract<TraceStep, { kind: 'fill' }>, fea
   return feature === 'login';
 }
 
-type FillStep = Extract<TraceStep, { kind: 'fill' }>;
-
 /** The placeholder a redacted credential value carries (one constant, credential-leak.ts). */
 export { CREDENTIAL_REDACTION };
 

@@ -18,16 +18,26 @@ concurrency:
 
 jobs:
   test:
-    name: Type-check & run generated specs
+    name: Typecheck, lint, build, smoke (Node ${{ matrix.node }})
+    # Pinned on purpose: ubuntu-latest is Ubuntu 26.04, where Playwright 1.60
+    # cannot install Chromium (PR #61). Move back to ubuntu-latest together
+    # with a Playwright upgrade, and raise the emitted framework's pin then.
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node }}
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            dashboard/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -35,24 +45,26 @@ jobs:
       - name: Type-check
         run: npm run typecheck
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Install dashboard dependencies
+        run: npm --prefix dashboard ci
+
+      - name: Build the dashboard
+        run: npm run dashboard:build
+
+      # No zip or unzip package is installed: the agent builds framework zips in
+      # process and the smokes read them back the same way (adm-zip).
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Run committed specs (if any)
-        run: |
-          if compgen -G "output/**/*.spec.ts" > /dev/null || compgen -G "output/**/*.spec.js" > /dev/null; then
-            npm run test:ci
-          else
-            echo "No committed specs in output/. Skipping test run."
-          fi
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 7
+      # No ANTHROPIC_API_KEY here and no QA_CORE_LIVE_SMOKES: the live smokes
+      # (a paid model call or a public website) are skipped, never counted as
+      # passed. Every other smoke runs against local fixtures.
+      - name: Smoke suite
+        run: npm run smoke
 
   eval:
     name: Eval harness (manual)
@@ -66,7 +78,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
       - run: npm ci
       - run: npx playwright install --with-deps chromium

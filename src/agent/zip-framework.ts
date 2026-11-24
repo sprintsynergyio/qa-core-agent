@@ -1,6 +1,5 @@
-import { spawnSync } from 'node:child_process';
+import AdmZip from 'adm-zip';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 /**
@@ -12,24 +11,18 @@ import path from 'node:path';
  *   - A `Buffer` of zip bytes in memory (used by the WebSocket gateway path
  *     so the bytes can be base64-encoded and streamed to the UI for download).
  *
- * Implementation note: we shell out to the platform `zip` command via
- * `spawnSync` (no shell interpretation, no injection surface). This avoids
- * adding a new npm dependency for a feature we only need in one place.
- * The agent already assumes a Unix-like environment elsewhere (setup.sh,
- * gateway, playwright/.auth layout), so this is consistent.
- *
- * The `zip` flags used:
- *   -r   recurse into subdirectories
- *   -q   quiet (suppress per-file logging)
- *   -X   strip extra attributes (uid/gid/extended attrs) so the zip is
- *        reproducible across machines
+ * The archive is built in process with adm-zip. It used to shell out to the
+ * platform `zip` command, which Windows does not have. Entry names always use
+ * forward slashes, whatever the host's path separator, so a zip written on
+ * Windows opens the same way everywhere. Each entry keeps its file's
+ * modification time and permission bits and nothing else about the machine.
  */
 
 const MAX_ZIP_BYTES = 100 * 1024 * 1024; // 100 MB — pathological cap, real frameworks are <1 MB
 
 /**
  * Run-folder artifacts that never belong in a framework zip, excluded by
- * name at zip time (`zip -x`) whenever the zipped directory is a run
+ * name at zip time whenever the zipped directory is a run
  * directory. The redacted run-report the scaffold writes under the framework
  * root is a different file and stays.
  */
@@ -48,27 +41,70 @@ export const RUN_ARTIFACTS: readonly string[] = ['checkpoint.json', 'events.json
  */
 export const RUN_OUTPUT_DIRS: readonly string[] = ['playwright/.auth', 'test-results', 'playwright-report', 'blob-report'];
 
-/** zip -x patterns for RUN_OUTPUT_DIRS under an archive root: the folder entry and everything below it, at any depth. */
-function runOutputExcludes(base: string): string[] {
-  return RUN_OUTPUT_DIRS.flatMap((d) => [`${base}/${d}/*`, `${base}/${d}/`, `${base}/*/${d}/*`, `${base}/*/${d}/`]);
+/** True for a path, relative to the archive root, that sits in or under a run output folder at any depth. */
+function inRunOutputDir(rel: string): boolean {
+  return RUN_OUTPUT_DIRS.some((d) => rel === d || rel.startsWith(`${d}/`) || rel.endsWith(`/${d}`) || rel.includes(`/${d}/`));
 }
 
 /**
- * Where to run `zip` from and what to name the archive root. By default the
+ * An exclude pattern as a matcher on a path relative to the archive root.
+ * The patterns keep the meaning they had as `zip -x <root>/<pattern>`
+ * arguments: `*` matches any run of characters, a slash included, and `?`
+ * one character, against the whole path. So `checkpoint.json` leaves out
+ * only the file at the root, and `*.zip` leaves out a zip at any depth.
+ */
+function excludeMatcher(patterns: readonly string[]): (rel: string) => boolean {
+  const res = patterns.map((p) => new RegExp('^' + p.split('*').map((part) => part.split('?').map((lit) => lit.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('.')).join('.*') + '$'));
+  return (rel) => res.some((re) => re.test(rel));
+}
+
+interface ZipEntry { name: string; abs: string; stat: fs.Stats; dir: boolean }
+
+/**
+ * Every entry of the archive, sorted, under one root folder. By default the
  * root is the source directory's own name. A run directory is named by its
  * run id, so callers pass `rootName` (the <brand>-automation-framework name)
- * and the directory is zipped through a same-named symlink in a temporary
- * wrapper; `zip -r` follows directory symlinks, so the entries land under
- * the requested root. `cleanup` removes the wrapper.
+ * and the entries are written under it. A symlink is followed, as `zip -r`
+ * followed it; a directory already being walked is never entered again, so a
+ * link that points back up the tree cannot loop.
  */
-function zipRoot(srcDir: string, rootName?: string): { cwd: string; base: string; cleanup: () => void } {
+function collectEntries(srcDir: string, rootName: string | undefined, exclude: readonly string[]): ZipEntry[] {
   const resolved = path.resolve(srcDir);
-  const base = path.basename(resolved);
-  if (!rootName || rootName === base) return { cwd: path.dirname(resolved), base, cleanup: () => {} };
-  if (!/^[A-Za-z0-9._-]+$/.test(rootName)) throw new Error(`zip root name must be a plain directory name (got "${rootName}")`);
-  const wrapper = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-core-zip-'));
-  fs.symlinkSync(resolved, path.join(wrapper, rootName), 'dir');
-  return { cwd: wrapper, base: rootName, cleanup: () => { try { fs.rmSync(wrapper, { recursive: true, force: true }); } catch { /* best effort */ } } };
+  const base = rootName ?? path.basename(resolved);
+  if (!/^[A-Za-z0-9._-]+$/.test(base) || base === '.' || base === '..') throw new Error(`zip root name must be a plain directory name (got "${base}")`);
+  const excluded = excludeMatcher(exclude);
+  const entries: ZipEntry[] = [{ name: `${base}/`, abs: resolved, stat: fs.statSync(resolved), dir: true }];
+  const walk = (dir: string, rel: string, open: readonly string[]): void => {
+    for (const name of fs.readdirSync(dir).sort()) {
+      const abs = path.join(dir, name);
+      const childRel = rel ? `${rel}/${name}` : name;
+      if (excluded(childRel) || inRunOutputDir(childRel)) continue;
+      let stat: fs.Stats;
+      try { stat = fs.statSync(abs); } catch { continue; } // a dangling symlink: nothing to store
+      if (stat.isDirectory()) {
+        const real = fs.realpathSync(abs);
+        if (open.includes(real)) continue; // a link back to a folder being walked
+        entries.push({ name: `${base}/${childRel}/`, abs, stat, dir: true });
+        walk(abs, childRel, [...open, real]);
+      } else if (stat.isFile()) {
+        entries.push({ name: `${base}/${childRel}`, abs, stat, dir: false });
+      }
+    }
+  };
+  walk(resolved, '', [fs.realpathSync(resolved)]);
+  return entries;
+}
+
+/** The archive bytes for a source directory. Throws past MAX_ZIP_BYTES. */
+function buildZip(srcDir: string, rootName: string | undefined, exclude: readonly string[]): Buffer {
+  const zip = new AdmZip();
+  for (const e of collectEntries(srcDir, rootName, exclude)) {
+    zip.addFile(e.name, e.dir ? Buffer.alloc(0) : fs.readFileSync(e.abs), '', e.stat);
+  }
+  const buffer = zip.toBuffer();
+  if (buffer.length === 0) throw new Error('zip produced no output');
+  if (buffer.length > MAX_ZIP_BYTES) throw new Error(`zip output (${buffer.length} bytes) exceeds MAX_ZIP_BYTES (${MAX_ZIP_BYTES})`);
+  return buffer;
 }
 
 export interface ZipResult {
@@ -87,29 +123,13 @@ export function zipFrameworkToFile(srcDir: string, destZipPath: string, rootName
   if (!fs.existsSync(srcDir) || !fs.statSync(srcDir).isDirectory()) {
     throw new Error(`Source is not a directory: ${srcDir}`);
   }
-  // Overwrite any pre-existing zip rather than letting `zip` append into it.
+  // Run-folder artifacts by name, and the run output folders always
+  // (RUN_OUTPUT_DIRS). The bytes are built before the destination is touched,
+  // so a zip written inside the source directory never contains itself.
+  const buffer = buildZip(srcDir, rootName, exclude);
   if (fs.existsSync(destZipPath)) fs.unlinkSync(destZipPath);
-
-  const root = zipRoot(srcDir, rootName);
-  // Run-folder artifacts by name, and the run output folders always (RUN_OUTPUT_DIRS).
-  const excludeArgs = ['-x', ...exclude.map((name) => `${root.base}/${name}`), ...runOutputExcludes(root.base)];
-  const result = spawnSync('zip', ['-rqX', path.resolve(destZipPath), root.base, ...excludeArgs], { cwd: root.cwd, encoding: 'buffer' });
-  root.cleanup();
-  if (result.error) {
-    throw new Error(
-      `Failed to invoke 'zip': ${result.error.message}. ` +
-      `Is the 'zip' command available on this system?`,
-    );
-  }
-  if (result.status !== 0) {
-    const stderr = result.stderr?.toString('utf8') ?? '';
-    throw new Error(`zip exited with code ${result.status}. stderr: ${stderr}`);
-  }
-  if (!fs.existsSync(destZipPath)) {
-    throw new Error(`zip reported success but no file at ${destZipPath}`);
-  }
-  const stats = fs.statSync(destZipPath);
-  return { zipPath: destZipPath, sizeBytes: stats.size };
+  fs.writeFileSync(destZipPath, buffer);
+  return { zipPath: destZipPath, sizeBytes: fs.statSync(destZipPath).size };
 }
 
 /**
@@ -123,34 +143,9 @@ export function zipFrameworkToBuffer(srcDir: string, rootName?: string, exclude:
   if (!fs.existsSync(srcDir) || !fs.statSync(srcDir).isDirectory()) {
     throw new Error(`Source is not a directory: ${srcDir}`);
   }
-  const root = zipRoot(srcDir, rootName);
-
-  // `zip -rqX -` writes the archive to stdout. Run-folder artifacts are
-  // excluded by name, never moved aside; the run output folders
-  // (RUN_OUTPUT_DIRS) are excluded whatever `exclude` says.
-  const excludeArgs = ['-x', ...exclude.map((name) => `${root.base}/${name}`), ...runOutputExcludes(root.base)];
-  const result = spawnSync('zip', ['-rqX', '-', root.base, ...excludeArgs], {
-    cwd: root.cwd,
-    maxBuffer: MAX_ZIP_BYTES,
-  });
-  root.cleanup();
-  if (result.error) {
-    throw new Error(
-      `Failed to invoke 'zip': ${result.error.message}. ` +
-      `Is the 'zip' command available on this system?`,
-    );
-  }
-  if (result.status !== 0) {
-    const stderr = result.stderr?.toString('utf8') ?? '';
-    throw new Error(`zip exited with code ${result.status}. stderr: ${stderr}`);
-  }
-  if (!result.stdout || result.stdout.length === 0) {
-    throw new Error('zip produced no output');
-  }
-  if (result.stdout.length > MAX_ZIP_BYTES) {
-    throw new Error(`zip output (${result.stdout.length} bytes) exceeds MAX_ZIP_BYTES (${MAX_ZIP_BYTES})`);
-  }
-  return result.stdout;
+  // Run-folder artifacts are excluded by name, never moved aside; the run
+  // output folders (RUN_OUTPUT_DIRS) are excluded whatever `exclude` says.
+  return buildZip(srcDir, rootName, exclude);
 }
 
 /**

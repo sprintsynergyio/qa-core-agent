@@ -14,13 +14,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { spawnSync } from 'node:child_process';
 import { scaffold } from '../src/agent/scaffold.js';
 import { zipFrameworkToFile } from '../src/agent/zip-framework.js';
 import type { RunReport } from '../src/agent/trace.js';
 
 // The production helper, shared by the CLI, the gateway and the MCP server.
 import { slimFrameworkDir } from '../src/agent/framework-dir.js';
+import { extractZip, tryZip } from './lib/zip-read.js';
 
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-core-slim-'));
 const frameworkDir = path.join(tmpRoot, 'saucedemo-framework');
@@ -88,9 +88,9 @@ check('K. zip size unchanged after slim', fs.statSync(zipPath).size === zipBytes
 // 7) Critical — zip contents are unaffected (still extractable, still complete).
 const extractDir = path.join(tmpRoot, 'extracted-after-slim');
 fs.mkdirSync(extractDir);
-const unzip = spawnSync('unzip', ['-q', zipPath, '-d', extractDir], { encoding: 'utf8' });
-check('L. zip extracts cleanly after slim', unzip.status === 0, unzip.stderr);
-if (unzip.status === 0) {
+const unzip = tryZip(() => extractZip(zipPath, extractDir));
+check('L. zip extracts cleanly after slim', unzip.ok, unzip.error);
+if (unzip.ok) {
   const extractedFramework = path.join(extractDir, 'saucedemo-framework');
   check('M. extracted framework still has package.json', fs.existsSync(path.join(extractedFramework, 'package.json')));
   check('N. extracted framework still has README.md', fs.existsSync(path.join(extractedFramework, 'README.md')));

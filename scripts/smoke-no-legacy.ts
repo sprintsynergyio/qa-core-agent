@@ -21,7 +21,7 @@ const SKIP_DIRS = new Set(['node_modules', 'dist', 'output', '.git', 'eval-resul
 const SKIP_FILES = new Set([path.join('STATE.md'), path.join('docs', 'dashboard-v2-plan.md'), path.join('scripts', 'smoke-no-legacy.ts'), 'package-lock.json', 'repomix-output.xml']);
 const TEXT = /\.(ts|tsx|js|mjs|cjs|json|md|html|css|svg|sh|yml|yaml|txt)$/i;
 // The retired route only: not a host such as legacy.example, a folder such as legacy-automation-framework, or the status word legacy.
-const LEGACY_ROUTE = /\/legacy(?=$|[\s'"`)\/,;?#])/;
+const LEGACY_ROUTE = /\/legacy(?=$|[\s'"`)/,;?#])/;
 const hits: string[] = [];
 let scanned = 0;
 const walk = (dir: string): void => {

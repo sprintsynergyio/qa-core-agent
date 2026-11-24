@@ -40,6 +40,6 @@ Generate Playwright test suites that **have already passed once** before they le
 - Framework: Playwright
 - Language: TypeScript (JavaScript on request via `--lang js`)
 - Pattern: **Page Object Model by default** — every `/explore` run emits a real framework with `pages/BasePage.{ts,js}`, one `<Feature>Page.{ts,js}` per detected page, a typed action method synthesized from common step sequences (e.g. `loginAs(user, pass)`), and the spec in `tests/`. Pass `--no-pom` for single-file inline output.
-- Browsers: Chromium primary; Firefox + WebKit + mobile when `npm run test` is invoked
+- Browsers: Chromium primary; Firefox + WebKit + mobile when `npm run test:specs` is invoked
 - Auth: storage-state reused via `tests/auth.setup.ts`
 - Output structure (POM default): `output/<run-id>/pages/`, `output/<run-id>/tests/`, `output/<run-id>/a11y/`, plus `run-report.json`

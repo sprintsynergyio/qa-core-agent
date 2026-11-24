@@ -186,8 +186,8 @@ try {
   // (ii) and (iii): each scenario's token is in its own get_dom body only.
   const prunedIn = (msgs: string, i: number): boolean => msgs.includes(JSON.stringify(prunedResultLine('get_dom', names[i - 1]!)).slice(1, -1));
   const closedAt = (i: number): number => sent.findIndex((x, ix) => ix > firstCall(i) && prunedIn(x.messages, i));
-  let leaked: string[] = [];
-  let missing: string[] = [];
+  const leaked: string[] = [];
+  const missing: string[] = [];
   for (let i = 1; i <= N; i++) {
     const open = firstCall(i);
     const close = closedAt(i);

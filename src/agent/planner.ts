@@ -1500,7 +1500,7 @@ export type PageFitSnapshot = Pick<PageSnapshot, 'inputs' | 'buttons' | 'heading
 export function formNamePhrases(snap: Pick<PageFitSnapshot, 'headings' | 'title' | 'url'>): string[] {
   const candidates: string[] = [];
   for (const h of snap.headings) if (h.label) candidates.push(h.label);
-  if (snap.title) candidates.push(...snap.title.split(/[|:·•\-]+/));
+  if (snap.title) candidates.push(...snap.title.split(/[|:·•-]+/));
   if (snap.url) {
     try { candidates.push(...new URL(snap.url).pathname.split('/')); } catch { /* not a URL */ }
   }

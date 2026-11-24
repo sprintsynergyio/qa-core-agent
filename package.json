@@ -1,17 +1,17 @@
 {
   "name": "qa-core-agent",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Autonomous QA agent that generates Playwright test suites from URLs, user stories, and PR diffs using an agentic tool-use loop on Claude.",
   "license": "MIT",
-  "author": "Muhammad Usman",
+  "author": "SprintSynergy <info@sprintsynergy.com> (https://sprintsynergy.com)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sprintsynergyhq/qa-core-agent.git"
+    "url": "git+https://github.com/sprintsynergyio/qa-core-agent.git"
   },
-  "homepage": "https://github.com/sprintsynergyhq/qa-core-agent",
+  "homepage": "https://github.com/sprintsynergyio/qa-core-agent",
   "bugs": {
-    "url": "https://github.com/sprintsynergyhq/qa-core-agent/issues"
+    "url": "https://github.com/sprintsynergyio/qa-core-agent/issues"
   },
   "keywords": [
     "playwright",
@@ -23,7 +23,7 @@
   ],
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "explore": "tsx src/cli/explore.ts",
@@ -34,33 +34,41 @@
     "eval": "tsx scripts/eval.ts",
     "gateway": "tsx scripts/ensure-dashboard-dist.ts && tsx src/server/gateway.ts",
     "mcp": "tsx src/mcp/server.ts",
-    "test": "playwright test",
+    "test": "npm run smoke",
+    "test:specs": "playwright test",
     "test:ci": "playwright test --reporter=github,html",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "smoke": "tsx scripts/smoke-all.ts",
     "dashboard:dev": "npm --prefix dashboard run dev",
     "dashboard:build": "npm --prefix dashboard run build"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.0",
+    "@anthropic-ai/sdk": "^1.11.0",
     "@axe-core/playwright": "^4.10.0",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@playwright/test": "^1.48.0",
-    "better-sqlite3": "^11.10.0",
+    "adm-zip": "^0.6.1",
+    "better-sqlite3": "^12.11.1",
     "dotenv": "^16.4.5",
     "mammoth": "^1.12.2",
     "pdf-parse": "^1.1.4",
     "playwright": "^1.48.0",
-    "qa-core-heal": "^0.3.4",
+    "qa-core-heal": "^0.7.2",
     "ws": "^8.20.0",
-    "zod": "^3.23.8"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/adm-zip": "^0.5.8",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.0.0",
     "@types/pdf-parse": "^1.1.5",
     "@types/ws": "^8.18.1",
+    "eslint": "^9.39.5",
+    "globals": "^17.14.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.73.0"
   }
 }

@@ -9,7 +9,7 @@ import { COMPARE_POLL_TIMEOUT_MS, relationsByVarName } from './replay.js';
 import { sameValuePoll } from './parse-number.js';
 import { absentCounterReadExpr, compareReadsAbsentAsZero, usesAbsentCounter } from './absent-counter.js';
 import { captureWaitNeeded } from './capture-ready.js';
-import { deriveDatasets, renderDatasetJson, recordedSelects, type DatasetCase, type DatasetSelect, type FeatureDataset } from './datasets.js';
+import { deriveDatasets, renderDatasetJson, recordedSelects, type DatasetCase, type FeatureDataset } from './datasets.js';
 import { AUTH_ENV_PASS, AUTH_ENV_USER, envVarForFill, findHappyLoginScenario, loginFeatureOf, recordedCredentials, reportUsesTestAccount, sessionGroups, stripLeadingLogin, type AuthCredentials } from './auth-emit.js';
 import { LOGIN_SEQUENCE_COMMENT, LOGIN_SEQUENCE_TITLE, SERIAL_MODE_LINE, loginSequence, withWrongPasswordBesideLogin } from './login-order.js';
 import type { RequirementsMap } from './requirements.js';
@@ -513,37 +513,6 @@ function pickPageUrl(scenario: Scenario, fallback: string): string {
     if (step.kind === 'navigate') return step.url;
   }
   return fallback;
-}
-
-function pageKey(url: string): string {
-  try {
-    const u = new URL(url);
-    return `${u.host}${u.pathname.split('/').slice(0, 2).join('/')}`;
-  } catch {
-    return url;
-  }
-}
-
-function pageLabel(url: string): string {
-  try {
-    const u = new URL(url);
-    const seg = u.pathname.split('/').filter(Boolean)[0] ?? '';
-    if (seg) return seg.replace(/[-_.]+/g, ' ');
-    // No path segment, so derive from the host. e.g. www.saucedemo.com → "saucedemo".
-    return u.host.replace(/^www\./, '').split('.')[0] ?? u.host;
-  } catch {
-    return 'page';
-  }
-}
-
-function pageClassName(url: string): string {
-  const raw = pageLabel(url);
-  const cleaned = raw.replace(/[^a-zA-Z0-9 ]+/g, ' ').trim();
-  const camel = cleaned
-    .split(/\s+/)
-    .map((w) => w ? w[0]!.toUpperCase() + w.slice(1).toLowerCase() : '')
-    .join('');
-  return (camel || 'Landing') + 'Page';
 }
 
 /* ───────────────────────── Selector + action analysis ───────────────────────── */
@@ -1204,7 +1173,7 @@ function renderDataHelpers(param: ParamPlan, ext: 'ts' | 'js'): string[] {
  * assertion follows c.expect: the representative's own success assertions,
  * or the case's own recorded error checks (expectDataErrors).
  */
-function renderParamLoop(param: ParamPlan, pc: PageClassPlan, ext: 'ts' | 'js'): string[] {
+function renderParamLoop(param: ParamPlan, pc: PageClassPlan, _ext: 'ts' | 'js'): string[] {
   const handle = camelize(pc.className);
   const rep = param.representative;
   const out: string[] = [];

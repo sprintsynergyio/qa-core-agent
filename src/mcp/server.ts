@@ -39,6 +39,7 @@ import {
   exploreRequestFromToolArgs, resumeRequestFromToolArgs, srsUploadFromToolArgs,
 } from './tools.js';
 import type { ExploreRequest } from '../agent/explore-request.js';
+import { packageVersion } from '../agent/package-version.js';
 
 /**
  * Where output gets written. Hosts run the MCP server from arbitrary cwds, so
@@ -76,8 +77,11 @@ function projectFile(...segs: string[]): string {
   return path.join(PROJECT_ROOT, ...segs);
 }
 
+/** The version every MCP client sees: package.json's, read at start, never a literal here. */
+const SERVER_VERSION = packageVersion();
+
 const server = new McpServer(
-  { name: 'qa-core', version: '0.4.0' },
+  { name: 'qa-core', version: SERVER_VERSION },
   {
     capabilities: { tools: {}, resources: {} },
     instructions: [
@@ -295,7 +299,7 @@ server.resource(
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  log(`QA-Core MCP server v0.4.0 ready (project root: ${PROJECT_ROOT})`);
+  log(`QA-Core MCP server v${SERVER_VERSION} ready (project root: ${PROJECT_ROOT})`);
 }
 
 main().catch((err) => {

@@ -41,6 +41,7 @@ import { runFrameworkLines, writeFrameworkZip } from '../src/agent/framework-zip
 import { CEILING_MID_SCENARIO_DETAIL, computeRuleCoverage, renderRuleCoverage } from '../src/agent/rule-coverage.js';
 import { CUT_MARKER, MESSAGE_CAP, messageLine } from '../src/cli/render.js';
 import type { RequirementsMap } from '../src/agent/requirements.js';
+import { extractZip } from './lib/zip-read.js';
 
 let pass = 0;
 let fail = 0;
@@ -217,10 +218,33 @@ try {
   // Run them in a temp copy of the run folder (a copy of the parent so the relative cd resolves), stopping before npm install.
   const copyRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-core-run-copy-'));
   fs.cpSync(path.join(tmpRoot, 'output'), path.join(copyRoot, 'output'), { recursive: true });
-  const shell = [...steps.filter((s) => s.startsWith('cd ') || s.startsWith('unzip ')), 'test -f package.json', 'pwd'].join(' && ');
-  const ran = spawnSync('sh', ['-c', shell], { cwd: copyRoot, encoding: 'utf8' });
-  check('E2. run in a temp copy of the run folder, the printed steps reach a folder that contains package.json',
-    ran.status === 0 && ran.stdout.trim().endsWith(path.join(outDirRel, 'shop-automation-framework')), `${ran.status} ${ran.stdout} ${ran.stderr}`);
+  // Carried out in process, step by step as printed (`cd <dir>` and
+  // `unzip -o <zip>`), so the check needs no shell and no system unzip. Any
+  // other step before `npm install` fails the check: it would not be carried out.
+  let cwd = copyRoot;
+  const carried: string[] = [];
+  let stepError = '';
+  for (const step of steps) {
+    if (step === 'npm install') break;
+    const cd = /^cd (.+)$/.exec(step);
+    const unzip = /^unzip -o (.+)$/.exec(step);
+    try {
+      if (cd) {
+        cwd = path.resolve(cwd, cd[1] ?? '');
+        if (!fs.statSync(cwd).isDirectory()) throw new Error(`not a directory: ${cwd}`);
+      } else if (unzip) {
+        extractZip(path.resolve(cwd, unzip[1] ?? ''), cwd);
+      } else {
+        throw new Error(`a printed step this check cannot carry out: ${step}`);
+      }
+      carried.push(step);
+    } catch (e) {
+      stepError = `${step}: ${(e as Error).message}`;
+      break;
+    }
+  }
+  check('E2. carried out in a temp copy of the run folder, the printed steps reach a folder that contains package.json',
+    stepError === '' && carried.length === 3 && fs.existsSync(path.join(cwd, 'package.json')) && cwd.endsWith(path.join(outDirRel, 'shop-automation-framework')), `${stepError} | ${carried.join(' ; ')} | ${cwd}`);
   check('E3. the source run folder is untouched (no extracted folder there)', !fs.existsSync(path.join(fixtureRun, 'shop-automation-framework')));
   check('E4. a refused zip still prints no steps', runFrameworkLines({ refused: { reason: 'r', files: [] } }, { outDirRel }).length === 0);
   fs.rmSync(copyRoot, { recursive: true, force: true });
