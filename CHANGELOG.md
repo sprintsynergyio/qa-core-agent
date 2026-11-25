@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Account safety behind the sign-in: a test that would change the test account's password or sign-in email, or delete the account, is never planned, and the tool refuses the step if one is recorded anyway.
 - `scripts/probe-login.ts <url>`: runs discovery and the login probe alone, with no model call and nothing written, and prints the pages a run would find behind the sign-in.
 - `smoke-login-action`: a fixture site with pages behind a login, the probe, the plan, the tools, the emitted framework run with Playwright in TypeScript and JavaScript, and a whole run in process.
+- Claims and evidence. A test name is now checked against its own recording before the test is accepted: if the name says a name, a price, an image, a total, a quantity or a count is shown, matched or updated, or that something was rejected or an error was shown, the recording must hold a check that proves it. The first refusal tells the model what is missing and keeps the scenario open; the second drops the scenario with the reason. Run 10 shipped three such names. When a rule the test cites says more than the test checks, the model is asked once to add that check; the test is kept either way.
+- Rule coverage counts a rule as covered only when a shipped test that cites it checks what the rule says. A rule that is cited and only partly checked reads `cited-not-exercised`, with the tests that cite it and the part no test checks. Coverage numbers go down where the old count was too kind: run 10 reads 7 of 14 where its report said 10.
+- `scripts/claim-check.ts <run dir>`: prints, for any stored run and with no model call, the test names and the covered rules that the recordings do not back.
+- `smoke-claim-evidence`: the vocabulary, run 10's own recordings, the tool on a fixture site, and the doctrine in both prompts.
 
 ### Fixed
 
@@ -20,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Rule coverage has a new reason, `cited-not-exercised`. The dashboard's rule table shows it as "cited, not fully checked".
 - An emitted test that signed in first now opens the page the browser was on after the sign-in. A test of the page the sign-in lands on keeps its checks; it was emitted as an empty test before.
 
 ### Not built yet

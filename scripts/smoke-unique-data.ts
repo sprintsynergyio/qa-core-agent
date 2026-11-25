@@ -301,7 +301,7 @@ check('F10. isWellFormedEmail: one @, a dotted domain, no spaces', isWellFormedE
   const browser = await chromium.launch({ headless: true });
   try {
     const bctx = await browser.newContext(); await installEvalShim(bctx); const page = await bctx.newPage();
-    const registerHtml = '<!doctype html><html><body><h3>Register</h3><form><input data-test="first-name" id="first" placeholder="First name"><input data-test="email" id="email" placeholder="Email"><input data-test="password" id="password" type="password" placeholder="Password"><button data-test="register-submit">Register</button></form></body></html>';
+    const registerHtml = '<!doctype html><html><body><h3>Register</h3><form><input data-test="first-name" id="first" placeholder="First name"><input data-test="email" id="email" placeholder="Email"><input data-test="password" id="password" type="password" placeholder="Password"><button data-test="register-submit">Register</button><div data-test="form-error" class="alert">Please fix the form</div></form></body></html>';
     const tctx = createContext(page, 60);
     const PLANNED_PROFILE = 'rejected the profile form with an empty first name';
     tctx.plannedNames = [FIRST_NAME_NEG, PLANNED_PROFILE, 'rejected registration submission with empty email field', 'rejected registration with an invalid email format', 'rejected registration with an already-used email address', 'registered a new account with valid data'];
@@ -313,7 +313,8 @@ check('F10. isWellFormedEmail: one @, a dotted domain, no spaces', isWellFormedE
       const r = await runTool(tctx, { name: 'fill', input: { intent: 'email input', testid: 'email', value } });
       const step = emailFill();
       const onPage = await page.inputValue('#email');
-      await runTool(tctx, { name: 'assert', input: { type: 'toBeVisible', testid: 'register-submit', intent: 'register button' } });
+      // The names say "rejected" and "error displayed": the recording reads the error element (invariant 89).
+      await runTool(tctx, { name: 'assert', input: { type: 'toBeVisible', testid: 'form-error', intent: 'form error' } });
       const end = await runTool(tctx, { name: 'end_scenario', input: {} });
       return { step, onPage, data: r.data, ended: end.ok === true };
     };
@@ -347,7 +348,8 @@ check('F10. isWellFormedEmail: one @, a dotted domain, no spaces', isWellFormedE
     const g8step = emailFill();
     const a8 = await runTool(tctx, { name: 'assert', input: { type: 'toBeVisible', testid: 'register-submit', intent: 'register button' } });
     const e8 = await runTool(tctx, { name: 'end_scenario', input: {} });
-    const newNotes = tctx.notes.slice(notesBefore);
+    // The claim check adds its own note for an unmatched name (invariant 89); this lock is the creation-email line.
+    const newNotes = tctx.notes.slice(notesBefore).filter((n) => n.startsWith('creation-email rule:'));
     check('G8. plan present, recorded name matches no planned name: a valid email in a first-name negative is kept literal', b8.ok && f8a.ok && f8b.ok && a8.ok && e8.ok && g8step?.generate === undefined && g8step?.value === 'jane@example.com' && (await page.inputValue('#email')) === 'jane@example.com', JSON.stringify({ b8, f8a, f8b, a8, e8, g8step }));
     check('G9. the line is logged once for the scenario, word for word, though the email was filled twice',
       newNotes.length === 1 && newNotes[0] === creationEmailUnmatchedLine(UNMATCHED) && newNotes[0] === `creation-email rule: recorded name "${UNMATCHED}" matched no planned name; email kept literal`, JSON.stringify(newNotes));

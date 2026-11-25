@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createContext, runTool, TOOL_DEFS, dominantTestIdAttribute, type ToolContext } from './tools.js';
+import { createContext, runTool, TOOL_DEFS, dominantTestIdAttribute, claimGapsOf, claimBrokenReason, type ToolContext } from './tools.js';
 import { elementLookedFor, findingKindOf, type Finding } from './finding-kind.js';
 import type { PlanSkippedPage, PlanTrimmed, RunReport, Scenario, TraceStep } from './trace.js';
 import { renderMemoryBlock, saveRun, type RunSummary } from './memory.js';
@@ -1482,8 +1482,13 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
         if (hasAssert) {
           // Gate also runs here so abandoned scenarios don't skip validation
           const { runGate } = await import('./gate.js');
+          // A name its recording does not back never ships, here either (invariant 89).
+          const claimGapsAtEnd = claimGapsOf(ctx, ctx.current);
           const gr = runGate(ctx.current);
-          if (gr.violations.length === 0) {
+          if (claimGapsAtEnd.length > 0) {
+            ctx.brokenByGate.push({ scenario: ctx.current.name, reason: claimBrokenReason(claimGapsAtEnd), attempts: 1 });
+            ctx.gateBrokenTraces.set(ctx.current.name, ctx.current);
+          } else if (gr.violations.length === 0) {
             for (const inj of gr.injections) {
               ctx._gateInjectionLog.push({
                 scenario: ctx.current.name,
@@ -2271,6 +2276,17 @@ export function plannedPagesFor(plan: PlannedScenario[], reachedPages?: Record<s
   }));
 }
 
+/** Per planned scenario that cites rules, those rules with their text from the requirements map. */
+export function plannedRulesFor(plan: PlannedScenario[], map?: RequirementsMap): Map<string, Array<{ id: string; text: string }>> {
+  const text = new Map((map?.features ?? []).flatMap((f) => f.rules.map((r) => [r.id, r.text] as const)));
+  const out = new Map<string, Array<{ id: string; text: string }>>();
+  for (const p of plan) {
+    const rules = (p.ruleIds ?? []).filter((id) => text.has(id)).map((id) => ({ id, text: text.get(id)! }));
+    if (rules.length > 0) out.set(p.name, rules);
+  }
+  return out;
+}
+
 /** Per feature, the page its state probe revealed, from the run's discovery record. */
 export function reachedPagesOf(discovery: RunReport['discovery'] | undefined): Record<string, string> {
   const out: Record<string, string> = {};
@@ -2362,6 +2378,9 @@ export async function runAgentLoop(args: {
   // scenarios carries that page, so end_scenario refuses a navigate to it.
   const reachedPageOf = reachedPageResolver(args.plan, args.reachedPages, args.requirements);
   ctx.plannedPages = plannedPagesFor(args.plan, args.reachedPages, args.requirements);
+  // The rules each planned scenario cites, with their text (invariant 89):
+  // end_scenario asks once for a check a cited rule names and the recording lacks.
+  ctx.plannedRules = plannedRulesFor(args.plan, args.requirements);
 
   const cost: RunReport['cost'] = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, usd: 0, calls: [] };
 

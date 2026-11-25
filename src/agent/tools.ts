@@ -8,6 +8,7 @@ export { recoverResolve, type ResolveInput };
 import type { Assertion, Scenario, SelectorRecord, TraceStep, CaptureSource, CompareRelation, CredentialMarker, GenerateKind } from './trace.js';
 import { baseLocator } from './replay.js';
 import { detectUniqueField, generateUnique, isEmailField } from './unique-data.js';
+import { claimGaps, gapText, type ClaimGap } from './claim-evidence.js';
 import { runGate, gateRuleLabel, gateBrokenReason, frameworkStateClassReason, catalogueLiteralReason, selectorLiteralReason, counterLiteralReason, counterCountCaptureReason, generatedIdReason, fragileCompareReason, fragileAssertReason, priceInNameReason, isCounterSelector, type GateViolation } from './gate.js';
 import { ABSENT_COUNTER_GRACE_MS, readCounterText } from './absent-counter.js';
 import { COMPARE_RELATION_WORDS } from './critic.js';
@@ -160,6 +161,19 @@ export interface ToolContext {
   plannedPages: Map<string, PlannedPageEntry>;
   /** Planned-page violations per planned scenario; the second records the scenario as gate-broken. */
   _plannedPageAttempts: Map<string, number>;
+  /** Claim-check refusals per scenario (invariant 89); the second records the scenario as gate-broken. */
+  _claimAttempts: Map<string, number>;
+  /** Recorded names the claim check could not judge because they matched no planned name; one note each. */
+  _claimUnmatched: Set<string>;
+  /**
+   * Per planned scenario, the rules it cites with their text (invariant 89;
+   * set by the agent loop from the plan and the requirements map). end_scenario
+   * asks ONCE for a check the rule text names and the recording lacks. It
+   * never drops a scenario for it: the rule then reads cited-not-exercised.
+   */
+  plannedRules: Map<string, Array<{ id: string; text: string }>>;
+  /** Scenarios already asked once for their cited rules' checks. */
+  _ruleNudged: Set<string>;
   /** Planned scenarios explicitly skipped via skip_scenario, each with a reason. */
   skipped: Array<{ scenario: string; reason: string }>;
   cascadeStats: Record<CascadeLevel, number>;
@@ -331,6 +345,10 @@ export function createContext(page: Page, maxSteps: number): ToolContext {
     plannedNames: [],
     plannedPages: new Map(),
     _plannedPageAttempts: new Map(),
+    _claimAttempts: new Map(),
+    _claimUnmatched: new Set(),
+    plannedRules: new Map(),
+    _ruleNudged: new Set(),
     skipped: [],
     cascadeStats: { role: 0, label: 0, placeholder: 0, text: 0, alt: 0, title: 0, testid: 0, css: 0, xpath: 0 },
     steps: 0,
@@ -904,6 +922,73 @@ export function plannedNameFor(ctx: ToolContext, name: string): string | null {
 
 /** Planned-page violations allowed before the scenario is recorded as gate-broken. */
 export const PLANNED_PAGE_CAP = 2;
+
+/* ─── claims and evidence (invariant 89) ────────────────────────────────── */
+
+/** Claim-check refusals allowed before the scenario is recorded as gate-broken. */
+export const CLAIM_CAP = 2;
+
+/** The note for a recorded name the claim check cannot judge: with a plan, only the plan's name is judged. */
+export function claimUnmatchedLine(name: string): string {
+  return `claim check: recorded name ${JSON.stringify(name)} matched no planned name; its claims were not checked`;
+}
+
+/**
+ * The claims of the scenario's name that its recording does not back
+ * (claim-evidence.ts). The name judged is the plan's canonical name, never
+ * the model's echo; the recorded name stands in only when the run has no
+ * plan. With a plan and no match there is no name to judge: the check does
+ * not run and one note says so (standing rule 1).
+ */
+export function claimGapsOf(ctx: ToolContext, scenario: Scenario): ClaimGap[] {
+  const hasPlan = ctx.plannedNames.length > 0;
+  const canonical = hasPlan ? plannedNameFor(ctx, scenario.name) : scenario.name;
+  if (canonical === null) {
+    if (!ctx._claimUnmatched.has(scenario.name)) {
+      ctx._claimUnmatched.add(scenario.name);
+      ctx.notes.push(claimUnmatchedLine(scenario.name));
+    }
+    return [];
+  }
+  return claimGaps(canonical, scenario.steps, 'name');
+}
+
+/** A cited rule whose text names a check the recording lacks. */
+export interface RuleGap { ruleId: string; text: string; gaps: ClaimGap[] }
+
+/**
+ * For the scenario's planned name, each cited rule whose text claims
+ * something this recording does not back. Empty with no plan, no match, or
+ * no cited rule: only the plan says which rules a scenario verifies.
+ */
+export function ruleGapsOf(ctx: ToolContext, scenario: Scenario): RuleGap[] {
+  if (ctx.plannedNames.length === 0) return [];
+  const canonical = plannedNameFor(ctx, scenario.name);
+  if (canonical === null) return [];
+  return (ctx.plannedRules.get(canonical) ?? [])
+    .map((r) => ({ ruleId: r.id, text: r.text, gaps: claimGaps(r.text, scenario.steps, 'rule') }))
+    .filter((r) => r.gaps.length > 0);
+}
+
+/** The one request end_scenario makes for a cited rule's missing check. It is a request, never a strike. */
+export function ruleNudgeText(ruleGaps: RuleGap[]): string {
+  const lines = ruleGaps.map((r) => `${r.ruleId} says ${JSON.stringify(r.text)} and the recording does not back ${r.gaps.map((g) => `${gapText(g)}: ${g.steer}`).join('; ')}`);
+  return `Rule check, asked once: this scenario cites ${lines.join('. ')}. ` +
+    `If the page shows it, add that check now and call end_scenario again. If the page does not show it, call end_scenario again as it is: the scenario is kept and the rule is reported as cited, not fully checked. Never invent a check the page cannot meet.`;
+}
+
+/** The drop reason of a scenario whose name claims more than its recording proves. */
+export function claimBrokenReason(gaps: ClaimGap[]): string {
+  return `the name claims more than the recording proves: ${gaps.map(gapText).join('; ')}`;
+}
+
+/** The refusal the Explorer reads: what is missing, how to add it, and that the scenario is still open. */
+export function claimRefusal(name: string, gaps: ClaimGap[], attempt: number): string {
+  const lines = gaps.map((g) => `${gapText(g)}: ${g.steer}`);
+  return `Claim check REFUSED attempt ${attempt}/${CLAIM_CAP}: the name "${name}" claims more than this recording proves. ${lines.join('. ')}. ` +
+    `The scenario is still open and its steps are kept: add the missing check now (navigate back to the planned page first if a value must be captured before an action), then call end_scenario again. ` +
+    `If the page does not show the thing the name claims, assert it anyway so the absence is recorded as a finding. A second refusal drops this scenario.`;
+}
 
 /* ─── the test account (invariant 70) ───────────────────────────────────── */
 
@@ -2406,6 +2491,41 @@ async function runToolInner(ctx: ToolContext, call: ToolInput): Promise<ToolResu
           return { ok: false, error: 'Scenario has no assertions. Add at least one assert, assert_compare, or assert_freeze before end_scenario.' };
         }
 
+        // Claims and evidence (invariant 89), before the gate: every thing the
+        // plan's name says is shown, matched, updated or rejected needs a
+        // check in the recording. Run ceeaf2 shipped "with names, images, and
+        // prices" with no name read. The first refusal keeps the scenario
+        // open (one more assertion usually closes the gap, a re-record costs
+        // ten calls); the second records it as gate-broken with the gaps.
+        {
+          const gaps = claimGapsOf(ctx, ctx.current);
+          const scenarioName = ctx.current.name;
+          // The cited rules' own claims, asked for once and never a strike: a
+          // test that is honest about its name is kept, and a rule it only
+          // partly checks reads cited-not-exercised in rule coverage.
+          const seen = new Set(gaps.map((g) => `${g.kind}:${g.need}`));
+          const ruleGaps = ctx._ruleNudged.has(scenarioName)
+            ? []
+            : ruleGapsOf(ctx, ctx.current).map((r) => ({ ...r, gaps: r.gaps.filter((g) => !seen.has(`${g.kind}:${g.need}`)) })).filter((r) => r.gaps.length > 0);
+          if (ruleGaps.length > 0) ctx._ruleNudged.add(scenarioName);
+          if (gaps.length === 0 && ruleGaps.length > 0) return { ok: false, error: `${ruleNudgeText(ruleGaps)} The scenario is still open and its steps are kept.` };
+          if (gaps.length > 0) {
+            const attempts = (ctx._claimAttempts.get(scenarioName) ?? 0) + 1;
+            ctx._claimAttempts.set(scenarioName, attempts);
+            if (attempts >= CLAIM_CAP) {
+              const rejected = ctx.current;
+              ctx.current = null;
+              ctx.brokenByGate.push({ scenario: scenarioName, reason: claimBrokenReason(gaps), attempts });
+              ctx.gateBrokenTraces.set(scenarioName, rejected);
+              return {
+                ok: false,
+                error: `Claim check BROKEN after ${attempts} attempts: ${claimBrokenReason(gaps)}. This scenario is permanently dropped and recorded with the reason; move on to the next planned scenario.`,
+              };
+            }
+            return { ok: false, error: claimRefusal(scenarioName, gaps, attempts) + (ruleGaps.length > 0 ? ` ${ruleNudgeText(ruleGaps)}` : '') };
+          }
+        }
+
         stampSignedInUrl(ctx);
         const gateResult = runGate(ctx.current, { knownNames: knownAccountNames(ctx) });
 
@@ -2531,7 +2651,13 @@ async function runToolInner(ctx: ToolContext, call: ToolInput): Promise<ToolResu
         let dropped = 0;
         if (ctx.current) {
           const hasAssert = ctx.current.steps.some((s) => s.kind === 'assert' || s.kind === 'assert_compare');
-          if (hasAssert) {
+          const claimGapsAtFinish = hasAssert ? claimGapsOf(ctx, ctx.current) : [];
+          if (claimGapsAtFinish.length > 0) {
+            // No retry at finish time: a name its recording does not back never ships (invariant 89).
+            ctx.brokenByGate.push({ scenario: ctx.current.name, reason: claimBrokenReason(claimGapsAtFinish), attempts: (ctx._claimAttempts.get(ctx.current.name) ?? 0) + 1 });
+            ctx.gateBrokenTraces.set(ctx.current.name, ctx.current);
+            dropped = 1;
+          } else if (hasAssert) {
             stampSignedInUrl(ctx);
             const gateResult = runGate(ctx.current, { knownNames: knownAccountNames(ctx) });
             if (gateResult.violations.length > 0) {

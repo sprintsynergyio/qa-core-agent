@@ -550,7 +550,9 @@ const cites = (p: PlannedScenario[], id: string): PlannedScenario | undefined =>
   const bad = await drive(r7.name, [nav(`${base}/`), click(), nav(`${base}/checkout`), assertVisible()], 'H2.');
   check('H2. a revealed-page rule whose trace navigates to /checkout is refused as navigated-to-reached-page, with the three ways out',
     bad.ok === false && /navigated to \/checkout, a page that is reached by action from \//.test(bad.error ?? '') && /\/checkout exists only after an action: open \//.test(bad.error ?? '') && /\(1\) restart with begin_scenario/.test(bad.error ?? ''), bad.error);
-  const good = await drive(r7.name, [nav(`${base}/`), click(), click(), click(), assertVisible()], 'H3.');
+  // The name says the row is listed "with its line total": the recording reads it (invariant 89).
+  const assertLineTotal = (): TraceStep => ({ kind: 'assert', name: '', assertion: { type: 'toHaveText', target: { level: 'css', arg: 'td.line-total', intent: '' }, text: '', pattern: '\\$\\d+\\.\\d{2}' } });
+  const good = await drive(r7.name, [nav(`${base}/`), click(), click(), click(), assertVisible(), assertLineTotal()], 'H3.');
   check('H3. the same scenario by the click path is accepted', good.ok === true, good.error);
   const r9 = cites(g.plan, 'R9')!;
   const b1 = await drive(r9.name, [nav(`${base}/checkout`), assertVisible()], 'H4a.');

@@ -31,6 +31,8 @@ const REASON_LABEL: Record<string, { label: string; variant: 'rework' | 'neutral
   'page-not-planned-global-cap': { label: 'page left unplanned by plan cap', variant: 'rework' },
   'not-reachable': { label: 'no page found', variant: 'neutral' },
   'not-revealed': { label: 'page not revealed', variant: 'neutral' },
+  // A shipped test cites the rule and checks part of what it says (invariant 89).
+  'cited-not-exercised': { label: 'cited, not fully checked', variant: 'rework' },
 };
 function statusOf(r: { latest_status: RuleStatus; latest_reason?: string | null }): { label: string; variant: 'pass' | 'rework' | 'neutral' | 'reject' } {
   const precise = r.latest_status !== 'covered' && r.latest_reason ? REASON_LABEL[r.latest_reason] : undefined;
