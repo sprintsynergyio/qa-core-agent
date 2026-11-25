@@ -914,6 +914,12 @@ export interface LoginProbeResult {
   newLinks: string[];
   /** The new links no feature claimed and the probe did not reveal, as paths. */
   unnamed: string[];
+  /**
+   * The new links robots.txt disallows, each with the Disallow rule that
+   * matched. They are never opened, with a map or without one, and the line
+   * says so: a page skipped for robots must never read as merely "not opened".
+   */
+  robotsBlocked: Array<{ path: string; rule: string }>;
   /** The one console line for the probe, printed whole. */
   line: string;
 }
@@ -980,7 +986,7 @@ export async function probeLogin(opts: LoginProbeOptions): Promise<LoginProbeRes
       detail: `no page revealed: ${why}`,
       errored: true,
     }));
-    return { outcome, ...(loginUrl ? { loginUrl } : {}), features, newLinks: [], unnamed: [], line: `Login probe: ${why}; no page behind the sign-in was looked for.` };
+    return { outcome, ...(loginUrl ? { loginUrl } : {}), features, newLinks: [], unnamed: [], robotsBlocked: [], line: `Login probe: ${why}; no page behind the sign-in was looked for.` };
   };
 
   let handle: ProbePageHandle | undefined;
@@ -1225,12 +1231,24 @@ export async function probeLogin(opts: LoginProbeOptions): Promise<LoginProbeRes
     const revealedList = features.filter((f) => f.page).map((f) => `${pathOf(f.page!.url)} (${f.feature})`);
     const newPaths = newLinks.map((l) => pathOf(pageKey(l.href!)));
     const unnamed = newLinks.map((l) => pageKey(l.href!)).filter((k) => !revealedKeys.has(k)).map(pathOf);
+    // A page robots.txt disallows is never opened. It is named with its rule,
+    // apart from the pages that were simply not opened, so the reason is on
+    // the line and on the record (run of Nov 25 on local Toolshop: five
+    // account pages read "not opened" with no reason).
+    const robotsBlocked = unnamed
+      .map((path) => ({ path, rule: robotsRuleFor(robots, path) }))
+      .filter((b): b is { path: string; rule: string } => b.rule !== null);
+    const blockedPaths = new Set(robotsBlocked.map((b) => b.path));
+    const open = unnamed.filter((path) => !blockedPaths.has(path));
+    const byRule = new Map<string, string[]>();
+    for (const b of robotsBlocked) byRule.set(b.rule, [...(byRule.get(b.rule) ?? []), b.path]);
     const parts = [
       `Login probe: signed in on ${pathOf(loginKey)}, landed on ${pathOf(landing)}`,
       revealedList.length > 0 ? `revealed ${revealedList.join(', ')}` : 'no page revealed',
-      ...(unnamed.length > 0 ? [`${opts.open ? 'also behind the sign-in, not opened' : 'also behind the sign-in, named by no requirements feature'}: ${unnamed.join(', ')}`] : []),
+      ...(open.length > 0 ? [`${opts.open ? 'also behind the sign-in, not opened' : 'also behind the sign-in, named by no requirements feature'}: ${open.join(', ')}`] : []),
+      ...[...byRule.entries()].map(([rule, paths]) => `behind the sign-in and disallowed by robots.txt, never opened: ${paths.join(', ')} (rule Disallow: ${rule})`),
     ];
-    return { outcome: 'ok', loginUrl: loginKey, landing, features, newLinks: newPaths, unnamed, line: parts.join('; ') };
+    return { outcome: 'ok', loginUrl: loginKey, landing, features, newLinks: newPaths, unnamed, robotsBlocked, line: parts.join('; ') };
   } catch (err) {
     return failAll('error', `the login probe failed (${brief(err) || 'unknown error'})`);
   } finally {
@@ -1357,6 +1375,8 @@ export interface LoginProbeRecord {
   revealed: string[];
   /** Paths of the new links no feature claimed. */
   unnamed: string[];
+  /** The new links robots.txt disallows, with the rule that matched. Absent when there is none. */
+  robotsBlocked?: Array<{ path: string; rule: string }>;
 }
 
 /**
@@ -1465,6 +1485,7 @@ export async function runStateProbes(opts: {
       newLinks: lr.newLinks,
       revealed: lr.features.filter((f) => f.page).map((f) => pathOf(f.page!.url)),
       unnamed: lr.unnamed,
+      ...(lr.robotsBlocked.length > 0 ? { robotsBlocked: lr.robotsBlocked } : {}),
     };
     const login = lr.loginUrl && lr.landing ? { loginUrl: lr.loginUrl, landing: lr.landing } : undefined;
     for (const fr of lr.features) {
