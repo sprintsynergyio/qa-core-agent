@@ -9,6 +9,7 @@ import type { ReachAction } from './discovery.js';
 import { samePage } from './planned-page.js';
 import { FORGOT_FLOW_RE } from './unique-data.js';
 import { pageScopeMismatchReason, type PlannedPageEvidence } from './rule-scope.js';
+import { claimsIn } from './claim-evidence.js';
 
 /**
  * Planner — Step 1 of the multi-agent pipeline.
@@ -175,6 +176,13 @@ export interface PlanResult {
    * with its cost and outcome. Their cost is included in `costUsd`.
    */
   ruleRetries: RuleRetry[];
+  /**
+   * The snapshot the scenarios were planned from, kept in memory for the
+   * rule placement pass (invariant 90): a rule no page's plan cited is
+   * placed on a page whose own snapshot shows what the rule needs. Never
+   * written to disk.
+   */
+  snapshot?: PageSnapshot;
 }
 
 /** One rule retry: the rule, what the call cost, and what came of it. */
@@ -929,7 +937,76 @@ async function planFromSnapshot(
   const costUsd = costOf(model, response.usage)
     + ruleRetries.reduce((n, r) => n + r.costUsd, 0);
 
-  return { scenarios: cited, pageTitle: snapshot.title, costUsd, dropped, rejected, citationDrops, pageFitRejected, contradictionRejected, ruleRetries, fillableFields: snapshot.fillableCount };
+  return { scenarios: cited, pageTitle: snapshot.title, costUsd, dropped, rejected, citationDrops, pageFitRejected, contradictionRejected, ruleRetries, fillableFields: snapshot.fillableCount, snapshot };
+}
+
+/* ── Rule placement (invariant 90) ────────────────────────────────────────── */
+
+/** How many one-rule placement calls a run may make, across every page. */
+export const RULE_PLACEMENT_CAP = 5;
+
+/** The one-rule ask the placement pass sends after the page snapshot. Exported for the smoke. */
+export function rulePlacementAsk(rule: RequirementRule, feature: RequirementFeature, url: string): string {
+  return `Plan ONE scenario verifying rule ${rule.id} on this page (${url}).\n` +
+    `Rule ${rule.id} [${rule.type}], feature "${feature.name}": ${rule.text}\n` +
+    `No planned scenario verifies this rule yet, and this page shows what the rule needs. Plan one that goes red only when THIS rule breaks, and name only what the test will check. ` +
+    `Return exactly one line in the plan format, inside <plan> tags, with the feature tag "${feature.name}" and the rule cited in the third bracket, for example:\n` +
+    `<plan>\n1. [${feature.name}][happy][${rule.id}] <past-tense outcome> — fails if <the regression>\n</plan>`;
+}
+
+/**
+ * One planning call for one rule on one page, from that page's own snapshot
+ * (no browser): the placement pass's call (invariant 90). The returned line
+ * goes through the same checks as a retried rule: it must parse, cite the
+ * rule (the id is added when omitted), and pass the circular, page-fit,
+ * contradiction, category and page-scope checks.
+ */
+export async function planRuleOnPage(opts: {
+  url: string;
+  snapshot: PageSnapshot;
+  rule: RequirementRule;
+  feature: RequirementFeature;
+  map: RequirementsMap;
+  reachedBy?: { origin: string; actions: ReachAction[] };
+  model?: string;
+  apiKey?: string;
+  client?: PlannerClient;
+}): Promise<RuleRetry & { added?: PlannedScenario }> {
+  const apiKey = opts.apiKey ?? process.env.ANTHROPIC_API_KEY;
+  if (!apiKey && !opts.client) throw new Error('ANTHROPIC_API_KEY is not set.');
+  const model = stageModel('planner', opts.model);
+  const client: PlannerClient = opts.client ?? (new Anthropic({ apiKey }) as unknown as PlannerClient);
+  // The map narrowed to this one rule, so the call plans nothing else.
+  const requirements: RequirementsMap = { ...opts.map, features: [{ ...opts.feature, rules: [opts.rule] }] };
+  const systemBlocks: Anthropic.TextBlockParam[] = [
+    { type: 'text', text: PLANNER_SYSTEM, cache_control: { type: 'ephemeral' } } as Anthropic.TextBlockParam,
+    { type: 'text', text: `${renderRequirementsBlock(requirements)}\n\n${RULE_PLANNING}` } as Anthropic.TextBlockParam,
+  ];
+  const reachedBlock = opts.reachedBy ? `\n\n${reachedByBlock(opts.url, opts.reachedBy)}` : '';
+  const credentialBlock = `\n\n${credentialSteeringFor(requirements)}`;
+  const pageEvidence: PlannedPageEvidence = { url: opts.url, h1: opts.snapshot.headings.filter((h) => h.tag === 'h1').map((h) => h.label ?? '') };
+  const retry = await retryUncoveredRules({
+    dropped: [{ name: '', category: 'happy', rationale: '', ruleIds: [opts.rule.id] } as PlannedScenario],
+    kept: [],
+    map: requirements,
+    budget: { remaining: 1 },
+    pageScope: (rule, scenario) => pageScopeMismatchReason(rule.text, pageEvidence, scenario.name),
+    ask: async (rule, feature) => {
+      const r = await client.messages.create({
+        model,
+        max_tokens: 400,
+        system: systemBlocks,
+        messages: [{ role: 'user', content: `URL: ${opts.url}\n\nPage snapshot:\n${JSON.stringify(opts.snapshot, null, 2)}${reachedBlock}${credentialBlock}\n\n${rulePlacementAsk(rule, feature, opts.url)}` }],
+      });
+      return {
+        text: r.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('\n'),
+        costUsd: costOf(model, r.usage),
+      };
+    },
+    accept: (sc) => circularUnchangedReason(sc) ?? vacuousAbsenceReason(sc) ?? pageFitReason(sc, opts.snapshot)?.reason ?? contradictionReason(sc, requirements),
+  });
+  const r = retry.retries[0] ?? { ruleId: opts.rule.id.toUpperCase(), costUsd: 0, outcome: 'none' as const, reason: 'no call was made' };
+  return { ...r, ...(r.outcome === 'none' ? { reason: 'the call returned no parseable scenario' } : {}), ...(retry.added[0] ? { added: retry.added[0] } : {}) };
 }
 
 /**
@@ -1445,7 +1522,7 @@ export const PAGE_FIT_TERMS: PageFitTerm[] = [
   { control: 'phone', from: 'inputs', named: /\b(tele)?phone\b|\bmobile\b/, evidence: /\b(tele)?phone\b|\bmobile\b|\btel\b/, kinds: ['tel'] },
   { control: 'address', from: 'inputs', named: /(?<!e ?mail |ip |web |url )\baddress\b|\bstreet\b/, evidence: /(?<!e ?mail |ip |web |url )\baddress\b|\bstreet\b/ },
   { control: 'subject', from: 'inputs', named: /\bsubject\b/, evidence: /\bsubject\b|\btopic\b/ },
-  { control: 'message', from: 'inputs', named: /(?<!(error|success|validation|confirmation|alert|warning|status|toast|inline|failure|flash|welcome|feedback|info|help|hint) )\bmessage\b/, evidence: /\bmessage\b|\bcomment\b/, kinds: ['textarea'] },
+  { control: 'message', from: 'inputs', named: /(?<!(error|success|validation|confirmation|alert|warning|status|toast|inline|failure|flash|welcome|feedback|info|help|hint|field) )\bmessage\b/, evidence: /\bmessage\b|\bcomment\b/, kinds: ['textarea'] },
   { control: 'comment', from: 'inputs', named: /\bcomments?\b/, evidence: /\bcomments?\b/, kinds: ['textarea'] },
   { control: 'quantity', from: 'inputs', named: /\bquantity\b|\bqty\b/, evidence: /\bquantity\b|\bqty\b/, kinds: ['number'] },
   { control: 'search', from: 'inputs', named: /\bsearch(ed|es|ing)?\b/, evidence: /\bsearch\w*\b/, kinds: ['search'], flag: 'hasSearch' },
@@ -1602,7 +1679,7 @@ export function pageFitRejectionLine(s: Pick<PlannedScenario, 'name' | 'ruleIds'
   return `Rejected page-fit scenario: "${s.name}" on ${url}: ${reason} ${cited}`;
 }
 
-export function pageFitReason(s: PlannedScenario, snapshot: PageFitSnapshot): { control: string; reason: string } | null {
+export function pageFitReason(s: PlannedScenario, snapshot: PageFitSnapshot, terms: PageFitTerm[] = PAGE_FIT_TERMS): { control: string; reason: string } | null {
   // "forgot-password form" on the forgot-password page names the form, not a
   // password field: the page's own form-name phrases are not judged.
   const name = nameWithoutFormNames(normalizeWords(s.name), formNamePhrases(snapshot));
@@ -1610,13 +1687,49 @@ export function pageFitReason(s: PlannedScenario, snapshot: PageFitSnapshot): { 
   // A navigation scenario is judged only on its first action's controls on
   // the planned page; what it reads after the click lives on another page.
   const navigates = NAV_VERB_RE.test(name);
-  for (const t of PAGE_FIT_TERMS) {
-    if (navigates && !FIRST_ACTION_CONTROLS.has(t.control)) continue;
+  // The one value a navigation scenario is still judged on: a price it says
+  // is the SAME on both pages ("with matching name and price", "the same
+  // name and price as the listing") must be shown on the page it starts on
+  // too. Runs 9 and 10 planned R5 on /rentals, whose cards carry no price:
+  // run 9 skipped it, run 10 shipped it with no price compared (invariant 90).
+  const samePrice = navigates && claimsIn(s.name).some((c) => c.kind === 'price' && c.need === 'equal');
+  for (const t of terms) {
+    const judgedAsSame = samePrice && t.control === 'price';
+    if (navigates && !FIRST_ACTION_CONTROLS.has(t.control) && !judgedAsSame) continue;
     if (!t.named.test(name)) continue;
     if (termEvidenced(t, ev)) continue;
-    return { control: t.control, reason: `names ${t.control} which the page snapshot does not show` };
+    return judgedAsSame
+      ? { control: t.control, reason: `says the price is the same on both pages, and the page snapshot shows no price to compare` }
+      : { control: t.control, reason: `names ${t.control} which the page snapshot does not show` };
   }
   return null;
+}
+
+/**
+ * The page-wide controls: the ones a whole-document flag evidences (price,
+ * sort, filter, pagination, search). A RULE text is read for these only
+ * (invariant 90). A field word in a rule is too often an outcome ("sends a
+ * confirmation email", "shows the delivery address") to say which page the
+ * rule belongs on; the scenario planned for the rule is still judged on the
+ * whole vocabulary by its own name.
+ */
+export const PAGE_WIDE_TERMS: PageFitTerm[] = PAGE_FIT_TERMS.filter((t) => t.flag !== undefined);
+
+/** The page-wide controls a rule text names. Exported for the placement pass. */
+export function pageWideControlsNamed(ruleText: string): string[] {
+  const name = normalizeWords(ruleText);
+  return PAGE_WIDE_TERMS.filter((t) => t.named.test(name)).map((t) => t.control);
+}
+
+/**
+ * Why a page does not show what a rule text needs, or null: the first
+ * page-wide control the rule names that the snapshot does not evidence. A
+ * navigation rule is read as a navigation scenario is (a value it reads
+ * after the click is not asked of the page it starts on, a price it says is
+ * the same on both pages is).
+ */
+export function ruleFitReason(ruleText: string, snapshot: PageFitSnapshot): string | null {
+  return pageFitReason({ name: ruleText, category: 'happy', rationale: '' }, snapshot, PAGE_WIDE_TERMS)?.reason ?? null;
 }
 
 /**

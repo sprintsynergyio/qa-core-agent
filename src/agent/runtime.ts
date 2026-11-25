@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createContext, runTool, TOOL_DEFS, dominantTestIdAttribute, claimGapsOf, claimBrokenReason, type ToolContext } from './tools.js';
 import { elementLookedFor, findingKindOf, type Finding } from './finding-kind.js';
-import type { PlanSkippedPage, PlanTrimmed, RunReport, Scenario, TraceStep } from './trace.js';
+import type { PlanSkippedPage, PlanTrimmed, RulePlacement, RunReport, Scenario, TraceStep } from './trace.js';
 import { renderMemoryBlock, saveRun, type RunSummary } from './memory.js';
-import { plan, pageFitRejectionLine, lockoutScenarioNames, knownAccountIdentifiers, unreachableFeatures, unreachableFeatureLine, reachActionsText, RULE_RETRY_CAP, type PlannedScenario } from './planner.js';
+import { plan, planRuleOnPage, pageFitRejectionLine, lockoutScenarioNames, knownAccountIdentifiers, unreachableFeatures, unreachableFeatureLine, reachActionsText, RULE_RETRY_CAP, type PlannedScenario } from './planner.js';
 import { alignVerdictNames, critique, decideRepairPass, finalCriticSummary, describeStep, repairOutcome, repairDoneEvent, repairScenarioEvents, splitCarriedVerdicts, splitGate, verdictFor, withReworkWithoutFix, type RepairDoneEvent, type RepairScenarioEvent, type RepairStartedEvent, type ScenarioVerdict } from './critic.js';
 import { replay, replayReportBlock, type ReplayEvent } from './replay.js';
 import { stability, stabilityReportBlock, stabilitySkipLine, type StabilityEvent } from './stability.js';
@@ -20,7 +20,7 @@ import { exploreStageModels, unknownModelRefusal } from './stage-models.js';
 import { discoverPages, discoveryFeatureList, fetchRobots, robotsBlockedFeatures, robotsDisallowedDetails, writeDiscoveryJson } from './discovery.js';
 import { detectLoginFeatures, detectStateFeatures, probeRuleReasons, runStateProbes } from './state-probe.js';
 import type { PlannedPageEntry } from './planned-page.js';
-import { buildPlanTargets, planAcrossPages, ruleRetryLine, PER_PAGE_SCENARIO_CAP, GLOBAL_PLAN_CAP } from './plan-pages.js';
+import { buildPlanTargets, planAcrossPages, placementDetails, ruleRetryLine, PER_PAGE_SCENARIO_CAP, GLOBAL_PLAN_CAP } from './plan-pages.js';
 import { filterPages, FILTERED_SOURCES, MAX_PAGES_WITH_FEATURES } from './page-filter.js';
 import { featureTokenMap } from './requirements.js';
 import {
@@ -898,6 +898,8 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
     planTrimmed: opts.resume?.planTrimmed as PlanTrimmed[] | undefined,
     // The pages the global cap left unplanned (invariant 78), the same way.
     planSkippedPages: opts.resume?.planSkippedPages as PlanSkippedPage[] | undefined,
+    // What the rule placement pass did (invariant 90), the same way.
+    rulePlacements: opts.resume?.rulePlacements as RulePlacement[] | undefined,
     completed: [...restoredCompleted],
     verdicts: opts.resume?.verdicts as ScenarioVerdict[] | undefined,
     spend: opts.resume
@@ -928,6 +930,7 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
     plan: cpState.plan,
     ...(cpState.planTrimmed ? { planTrimmed: cpState.planTrimmed } : {}),
     ...(cpState.planSkippedPages ? { planSkippedPages: cpState.planSkippedPages } : {}),
+    ...(cpState.rulePlacements ? { rulePlacements: cpState.rulePlacements } : {}),
     fillableFields: cpState.fillableFields,
     completedScenarios: cpState.completed,
     ...(cpState.verdicts && cpState.verdicts.length > 0 ? { verdicts: cpState.verdicts } : {}),
@@ -1120,6 +1123,16 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
       targets: planned.targets,
       planFn: (a) => plan({ ...a, apiKey, ruleRetryBudget }),
       ...(probeTokens ? { featureTokens: probeTokens } : {}),
+      // Rule placement (invariant 90): a rule no page's plan cited is placed
+      // on a planned page whose snapshot shows what it needs. A feature a
+      // state probe decided keeps the probe's own pages and reasons.
+      ...(opts.requirements
+        ? {
+            map: opts.requirements,
+            placeRule: (a) => planRuleOnPage({ ...a, map: opts.requirements!, apiKey, model: stageModels.planner }),
+            skipPlacementFeatures: new Set(probes.probes.map((p) => p.feature)),
+          }
+        : {}),
       onMessage: (text) => opts.onEvent?.({ type: 'message', text }),
       onPlanError: (err, _t, partial) => {
         // Billing/credit exhaustion or a persistent API failure must not be
@@ -1149,6 +1162,7 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
     if (planned2.planCapHit) planCapHit = true;
     cpState.planTrimmed = planned2.planTrimmed;
     cpState.planSkippedPages = planned2.planSkippedPages;
+    if (opts.requirements) cpState.rulePlacements = planned2.rulePlacements;
 
     if (combined.length === 0) {
       throw new Error(
@@ -2038,6 +2052,7 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
     ...(discoveryInfo ? { discovery: discoveryInfo } : {}),
     ...(cpState.planTrimmed ? { planTrimmed: cpState.planTrimmed } : {}),
     ...(cpState.planSkippedPages ? { planSkippedPages: cpState.planSkippedPages } : {}),
+    ...(cpState.rulePlacements ? { rulePlacements: cpState.rulePlacements } : {}),
     ...(orientationCalls !== undefined ? { orientationCalls } : {}),
     scenarios: emittedScenarios,
     cascadeStats,
@@ -2124,6 +2139,12 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
         // A robots-blocked state probe: its revealed-side rules read
         // robots-disallowed, its origin-side rules were planned on the origin.
         ...(discoveryInfo?.stateProbes ? { probeRules: probeRuleReasons(discoveryInfo.stateProbes) } : {}),
+        // A skipped citing scenario reads planned-but-skipped with the
+        // recorded reason, a product finding finding-recorded, and a rule no
+        // planned page fits says what no page shows (invariant 90).
+        skipped,
+        findings: findings.map((f) => ({ scenario: f.scenario, kind: findingKindOf(f) })),
+        placements: placementDetails(cpState.rulePlacements),
       }),
       // Derivation: which checklist categories produced scenarios per feature
       // and which were skipped, with the reason. The considered-not-automated

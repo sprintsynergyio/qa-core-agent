@@ -1,10 +1,11 @@
 import { accountSafetyLine, accountSafetyReason } from './account-safety.js';
 import type { DiscoveredPage, ReachAction } from './discovery.js';
-import { pagesCarryingFeature } from './page-filter.js';
-import { crossPageBasisText, dedupeAcrossPages, pageFitRejectionLine, uniqueScenarioNames, type CarriesFeature, type PageSnapshot, type PlannedScenario, type PlanResult, type RuleRetry } from './planner.js';
-import type { RequirementsMap } from './requirements.js';
+import { pagesCarryingFeature, segmentMatchesTokens } from './page-filter.js';
+import { crossPageBasisText, dedupeAcrossPages, pageWideControlsNamed, ruleFitReason, pageFitRejectionLine, uniqueScenarioNames, RULE_PLACEMENT_CAP, type CarriesFeature, type PageSnapshot, type PlannedScenario, type PlanResult, type RuleRetry } from './planner.js';
+import { ruleContentTokens, type RequirementFeature, type RequirementRule, type RequirementsMap } from './requirements.js';
+import { namedPlaces, pageScopeMismatchReason } from './rule-scope.js';
 import type { BlockedFeature, OriginPage, RevealedFeature } from './state-probe.js';
-import type { PlanSkippedPage, PlanTrimmed } from './trace.js';
+import type { PlanSkippedPage, PlanTrimmed, RulePlacement } from './trace.js';
 
 /**
  * Per-page planning for a discovery run: which plan() call each page gets,
@@ -230,6 +231,130 @@ export function ruleRetryLine(rr: RuleRetry): string {
   return `Planner rule retry ${rr.ruleId}: ${what} · $${rr.costUsd.toFixed(4)}`;
 }
 
+/* ── Rule placement (invariant 90) ────────────────────────────────────────── */
+
+function pathOf(url: string): string {
+  try { return new URL(url).pathname; } catch { return url; }
+}
+
+/**
+ * The plan targets a rule can be placed on, in order, and why the others do
+ * not fit. Runs 8 to 10 planned the search rule only on pages with no search
+ * box and the home-page rule never on the home page, because each page's
+ * call was offered one feature's rules and the home page was tagged with
+ * another feature (run b4e41b D7).
+ *
+ * A target FITS a rule when its own snapshot shows every page-wide control
+ * the rule text names (price, sort, filter, pagination, search; a field word
+ * in a rule is not read) and, when the rule names a page or form, the page
+ * carries it (rule-scope.ts). A target is only considered when something
+ * ties the rule to it: the page is tagged with the rule's feature, or the
+ * rule names a place, or the rule names a page-wide control. A page reached
+ * by action is considered only for its own feature.
+ *
+ * Order: when the rule's own words name a flow (register, sign in, reset,
+ * cart, contact, search) and a considered page's path carries it, only those
+ * pages are candidates, so a registration rule is never placed on the login
+ * page of the same feature. Otherwise the pages tagged with the rule's
+ * feature come first, then plan order. Read off the rule text, the paths
+ * and the snapshots, never a scenario name (standing rule 1).
+ */
+export function placementCandidates(opts: {
+  rule: RequirementRule;
+  feature: RequirementFeature;
+  targets: PlanTarget[];
+  /** Each target's own snapshot, by index; a target with none is not considered. */
+  snapshots: Map<number, PageSnapshot>;
+}): { candidates: number[]; considered: number; why: string } {
+  const { rule, feature, targets } = opts;
+  const namesPlace = namedPlaces(rule.text).length > 0;
+  const namesControl = pageWideControlsNamed(rule.text).length > 0;
+  const ownTokens = ruleContentTokens({ description: '', rules: [rule] });
+  const carriesOwn = (url: string): boolean => {
+    try { return new URL(url).pathname.toLowerCase().split('/').filter(Boolean).some((seg) => segmentMatchesTokens(seg, ownTokens)); } catch { return false; }
+  };
+  const considered: Array<{ i: number; tagged: boolean; own: boolean; miss: string | null }> = [];
+  targets.forEach((t, i) => {
+    const snapshot = opts.snapshots.get(i);
+    if (!snapshot) return;
+    const tagged = t.page.feature === feature.name || (t.features ?? []).includes(feature.name);
+    if (t.reachedBy ? !tagged : !(tagged || namesPlace || namesControl)) return;
+    const h1 = snapshot.headings.filter((h) => h.tag === 'h1').map((h) => h.label ?? '');
+    const miss = pageScopeMismatchReason(rule.text, { url: t.page.url, h1 }, '') ?? ruleFitReason(rule.text, snapshot);
+    considered.push({ i, tagged, own: ownTokens.length > 0 && carriesOwn(t.page.url), miss });
+  });
+  // The rule's own words name a flow and a considered page carries it: the rule belongs there.
+  const pool = considered.some((c) => c.own) ? considered.filter((c) => c.own) : considered;
+  const misses = new Map<string, string[]>();
+  for (const c of pool) {
+    if (!c.miss) continue;
+    // The scope reason names the page itself; keep the part that is the same on every page.
+    const key = c.miss.replace(/ and this scenario is planned on \S+, which does not carry it by page evidence$/, ', which the page does not carry by page evidence');
+    misses.set(key, [...(misses.get(key) ?? []), pathOf(targets[c.i]!.page.url)]);
+  }
+  const fits = pool.filter((c) => !c.miss);
+  const why = [...misses.entries()].map(([reason, paths]) => `${reason} (${paths.join(', ')})`).join('; ');
+  return { candidates: [...fits.filter((c) => c.tagged), ...fits.filter((c) => !c.tagged)].map((c) => c.i), considered: pool.length, why };
+}
+
+/** The console line for one placement. */
+export function rulePlacementLine(p: RulePlacement): string {
+  const cost = ` · $${p.costUsd.toFixed(4)}`;
+  switch (p.outcome) {
+    case 'planned': return `Planner rule placement ${p.ruleId} on ${p.pageUrl}: planned "${p.scenario}"${cost}`;
+    case 'rejected': return `Planner rule placement ${p.ruleId} on ${p.pageUrl}: rejected "${p.scenario}": ${p.reason}${cost}`;
+    case 'none': return `Planner rule placement ${p.ruleId} on ${p.pageUrl}: no scenario returned (${p.reason})${cost}`;
+    case 'no-page': return `Planner rule placement ${p.ruleId}: no planned page fits: ${p.reason}`;
+    case 'no-budget': return `Planner rule placement ${p.ruleId}: not tried, the placement budget of ${RULE_PLACEMENT_CAP} calls is spent`;
+    case 'plan-full': return `Planner rule placement ${p.ruleId}: not placed, the plan is at its cap of ${GLOBAL_PLAN_CAP} and every planned scenario cites a rule`;
+  }
+}
+
+/** What rule coverage says for a rule the placement pass could not plan (the detail of its not-planned reason). */
+export function placementDetail(p: RulePlacement): string | null {
+  const on = p.pageUrl ? pathOf(p.pageUrl) : '';
+  switch (p.outcome) {
+    case 'planned': return null;
+    case 'rejected': return `placement on ${on} rejected: ${p.reason}`;
+    case 'none': return `placement on ${on} returned no scenario`;
+    case 'no-page': return `no planned page fits: ${p.reason}`;
+    case 'no-budget': return `placement not tried: the budget of ${RULE_PLACEMENT_CAP} calls was spent`;
+    case 'plan-full': return `not placed: the plan was at its cap of ${GLOBAL_PLAN_CAP} and every planned scenario cites a rule`;
+  }
+}
+
+/** Per rule id, the coverage detail of every placement that planned nothing. */
+export function placementDetails(placements: RulePlacement[] | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const p of placements ?? []) {
+    const d = placementDetail(p);
+    if (d) out[p.ruleId] = d;
+  }
+  return out;
+}
+
+/**
+ * The scenario a placement may replace when the plan is at its cap: the
+ * last one that cites no rule, a negative or edge before a happy one (a
+ * happy flow with no rule is often the sign-in the framework's setup
+ * needs). -1 when every planned scenario cites a rule.
+ */
+export function placementVictim(combined: PlannedScenario[]): number {
+  const noRule = (s: PlannedScenario): boolean => (s.ruleIds ?? []).length === 0;
+  for (let i = combined.length - 1; i >= 0; i--) if (noRule(combined[i]!) && combined[i]!.category !== 'happy') return i;
+  for (let i = combined.length - 1; i >= 0; i--) if (noRule(combined[i]!)) return i;
+  return -1;
+}
+
+/** The arguments of one placement call. */
+export interface PlaceRuleArgs {
+  url: string;
+  snapshot: PageSnapshot;
+  rule: RequirementRule;
+  feature: RequirementFeature;
+  reachedBy?: { origin: string; actions: ReachAction[] };
+}
+
 export interface PlanAcrossPagesResult {
   combined: PlannedScenario[];
   dropped: Array<{ scenario: PlannedScenario; duplicateOf: PlannedScenario }>;
@@ -247,6 +372,8 @@ export interface PlanAcrossPagesResult {
   planTrimmed: PlanTrimmed[];
   /** Every page the global cap left unplanned, by URL with its feature tag; [] when the cap left none. */
   planSkippedPages: PlanSkippedPage[];
+  /** Every rule the placement pass looked at (invariant 90); [] when it had nothing to place or did not run. */
+  rulePlacements: RulePlacement[];
 }
 
 /**
@@ -264,6 +391,15 @@ export async function planAcrossPages(opts: {
   onPlanError?: (err: unknown, target: PlanTarget, partial: { combined: PlannedScenario[]; plannerUsd: number }) => void | Promise<void>;
   /** Extra path tokens per feature (featureTokenMap), for the page-evidence check of the cross-page dedup. */
   featureTokens?: Record<string, string[]>;
+  /**
+   * The whole requirements map and the one-rule call, for the placement
+   * pass (invariant 90). With either absent the pass does not run and the
+   * result is exactly the per-page plan.
+   */
+  map?: RequirementsMap;
+  placeRule?: (args: PlaceRuleArgs) => Promise<RuleRetry & { added?: PlannedScenario }>;
+  /** Features whose pages a state probe decides (invariants 71 and 88): their rules are never placed elsewhere. */
+  skipPlacementFeatures?: Set<string>;
 }): Promise<PlanAcrossPagesResult> {
   const { targets, onMessage } = opts;
   let combined: PlannedScenario[] = [];
@@ -278,6 +414,16 @@ export async function planAcrossPages(opts: {
   let planCapHit = false;
   const planTrimmed: PlanTrimmed[] = [];
   const planSkippedPages: PlanSkippedPage[] = [];
+  const rulePlacements: RulePlacement[] = [];
+  const snapshots = new Map<number, PageSnapshot>();
+  /** A scenario as it sits in the plan when planned on this target. */
+  const placeOn = (t: PlanTarget) => (s: PlannedScenario): PlannedScenario => ({
+    ...s,
+    pageUrl: t.reachedBy ? t.reachedBy.origin : t.page.url,
+    ...(t.volatile ? { volatilePage: true } : {}),
+    ...(t.page.feature && !s.feature ? { feature: t.page.feature } : {}),
+    ...(t.reachedBy ? { reachedBy: { pageUrl: t.page.url, origin: t.reachedBy.origin, actions: t.reachedBy.actions } } : {}),
+  });
   const pageFeatureOf = (url: string | undefined): string | undefined => targets.find((t) => t.page.url === url)?.page.feature;
   const carriesFeature = targetEvidence(targets, opts.featureTokens);
   for (const [idx, t] of targets.entries()) {
@@ -307,13 +453,8 @@ export async function planAcrossPages(opts: {
       onMessage(`Planner failed on ${pg.url} (${(err as Error).message}); page skipped.`);
       continue;
     }
-    const placeOf = (s: PlannedScenario): PlannedScenario => ({
-      ...s,
-      pageUrl: t.reachedBy ? t.reachedBy.origin : pg.url,
-      ...(t.volatile ? { volatilePage: true } : {}),
-      ...(pg.feature && !s.feature ? { feature: pg.feature } : {}),
-      ...(t.reachedBy ? { reachedBy: { pageUrl: pg.url, origin: t.reachedBy.origin, actions: t.reachedBy.actions } } : {}),
-    });
+    const placeOf = placeOn(t);
+    if (p.snapshot) snapshots.set(idx, p.snapshot);
     let scen = p.scenarios.map(placeOf);
     // Page fit: each drop is named with its page, and the scenario never
     // reaches the plan, so the funnel stays balanced.
@@ -391,7 +532,68 @@ export async function planAcrossPages(opts: {
     const label = t.reachedBy ? `${pg.url} (reached by action from ${t.reachedBy.origin})` : pg.url;
     onMessage(`Planner [${idx + 1}/${targets.length}] ${label}: ${scen.length} scenario(s) · $${p.costUsd.toFixed(4)}`);
   }
-  return { combined, dropped, rejected, citationDrops, pageFitRejected, contradictionRejected, accountSafetyRejected, plannerUsd, fillableMax, planCapHit, planTrimmed, planSkippedPages };
+  // Rule placement (invariant 90): a rule no page's plan cited, and no cap
+  // cut, is placed on a planned page whose own snapshot shows what the rule
+  // needs, with one call for that rule alone.
+  if (opts.map && opts.placeRule) {
+    const up = (id: string): string => id.toUpperCase();
+    const cited = new Set(combined.flatMap((s) => (s.ruleIds ?? []).map(up)));
+    const cutIds = new Set(planTrimmed.flatMap((c) => c.ruleIds.map(up)));
+    let budget = RULE_PLACEMENT_CAP;
+    for (const feature of opts.map.features) {
+      if (opts.skipPlacementFeatures?.has(feature.name)) continue;
+      for (const rule of feature.rules) {
+        const ruleId = up(rule.id);
+        if (cited.has(ruleId) || cutIds.has(ruleId)) continue;
+        const found = placementCandidates({ rule, feature, targets, snapshots });
+        const record = (r: RulePlacement): void => { rulePlacements.push(r); onMessage(rulePlacementLine(r)); };
+        // Nothing ties the rule to any planned page: the no-page reasons own it.
+        if (found.considered === 0) continue;
+        if (found.candidates.length === 0) { record({ ruleId, feature: feature.name, outcome: 'no-page', reason: found.why, costUsd: 0 }); continue; }
+        const t = targets[found.candidates[0]!]!;
+        const victim = combined.length >= GLOBAL_PLAN_CAP ? placementVictim(combined) : -1;
+        if (combined.length >= GLOBAL_PLAN_CAP && victim < 0) { record({ ruleId, feature: feature.name, pageUrl: t.page.url, outcome: 'plan-full', costUsd: 0 }); continue; }
+        if (budget <= 0) { record({ ruleId, feature: feature.name, pageUrl: t.page.url, outcome: 'no-budget', costUsd: 0 }); continue; }
+        budget -= 1;
+        let r: RuleRetry & { added?: PlannedScenario };
+        try {
+          r = await opts.placeRule({ url: t.page.url, snapshot: snapshots.get(found.candidates[0]!)!, rule, feature, ...(t.reachedBy ? { reachedBy: t.reachedBy } : {}) });
+        } catch (err) {
+          await opts.onPlanError?.(err, t, { combined, plannerUsd });
+          record({ ruleId, feature: feature.name, pageUrl: t.page.url, outcome: 'none', reason: (err as Error).message, costUsd: 0 });
+          continue;
+        }
+        plannerUsd += r.costUsd;
+        // The rule's own feature, whatever tag the page carries: the home page tagged "cart" still gets a catalogue test.
+        let added = r.added ? { ...placeOn(t)(r.added), feature: feature.name } : undefined;
+        let outcome: RulePlacement['outcome'] = r.outcome;
+        let reason = r.reason;
+        // Behind the sign-in the one test account is never changed (invariant 88).
+        if (added && t.reachedBy?.actions.some((a) => a.kind === 'login')) {
+          const unsafe = accountSafetyReason(added.name);
+          if (unsafe) { outcome = 'rejected'; reason = unsafe; added = undefined; }
+        }
+        if (added) {
+          if (victim >= 0) {
+            // A rule's only scenario outranks one that cites no rule: the cut is named and recorded like every cap cut.
+            const cut = combined[victim]!;
+            combined.splice(victim, 1);
+            planCapHit = true;
+            planTrimmed.push({ pageUrl: cut.reachedBy?.pageUrl ?? cut.pageUrl ?? '', name: cut.name, ruleIds: [], cause: 'global-cap' });
+            onMessage(`Planner: the plan is at its cap of ${GLOBAL_PLAN_CAP}; cut "${cut.name}" (cited no rule) to make room for ${ruleId}.`);
+          }
+          const unique = uniqueScenarioNames(combined, [added], t.page);
+          for (const rn of unique.renames) onMessage(`Renamed duplicate scenario: "${rn.from}" -> "${rn.to}" (the same name was planned on another page)`);
+          combined.push(...unique.scenarios);
+          cited.add(ruleId);
+          record({ ruleId, feature: feature.name, pageUrl: t.page.url, outcome: 'planned', scenario: unique.scenarios[0]!.name, costUsd: r.costUsd });
+          continue;
+        }
+        record({ ruleId, feature: feature.name, pageUrl: t.page.url, outcome: outcome === 'planned' ? 'none' : outcome, ...(r.scenario ? { scenario: r.scenario } : {}), ...(reason ? { reason } : {}), costUsd: r.costUsd });
+      }
+    }
+  }
+  return { combined, dropped, rejected, citationDrops, pageFitRejected, contradictionRejected, accountSafetyRejected, plannerUsd, fillableMax, planCapHit, planTrimmed, planSkippedPages, rulePlacements };
 }
 
 /**

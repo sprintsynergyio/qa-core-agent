@@ -21,11 +21,12 @@ export const CUT_MARKER = ' ... (full line in events.jsonl)';
 /**
  * Messages printed whole whatever their length: the repair pass decision
  * line (invariant 38; run 44cb3d's never reached the terminal, eaten by the
- * old 240-character drop) and the state probe lines (invariant 71). The
+ * old 240-character drop), the state probe lines (invariant 71) and the
+ * rule placement lines (invariant 90). The
  * resume hint is printed whole too, once, as the last line of the run, by
  * the CLI itself (invariant 40); its mid-run copies are suppressed here.
  */
-const WHOLE_PREFIXES = ['repair pass:', 'repair pass skipped:', 'State probe "', 'Login probe:'];
+const WHOLE_PREFIXES = ['repair pass:', 'repair pass skipped:', 'State probe "', 'Login probe:', 'Planner rule placement '];
 
 /**
  * The console line for one runtime message: null only for the mid-run copy

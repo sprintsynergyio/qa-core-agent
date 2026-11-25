@@ -3,7 +3,7 @@ import path from 'node:path';
 import { maskForDisk } from './credential-leak.js';
 import type { PlannedScenario } from './planner.js';
 import type { RequirementsMap } from './requirements.js';
-import type { PlanSkippedPage, PlanTrimmed, RunReport, Scenario } from './trace.js';
+import type { PlanSkippedPage, PlanTrimmed, RulePlacement, RunReport, Scenario } from './trace.js';
 import type { ScenarioVerdict } from './critic.js';
 import type { EmptyRunCause } from './reconcile.js';
 import { scenarioNameKey } from './rule-coverage.js';
@@ -110,6 +110,8 @@ export interface Checkpoint {
   planTrimmed?: PlanTrimmed[];
   /** Pages the global plan cap left unplanned (invariant 78); [] when it left none. Absent when per-page planning never ran and on older checkpoints. */
   planSkippedPages?: PlanSkippedPage[];
+  /** What the rule placement pass did (invariant 90); [] when it placed nothing. Absent when it never ran and on older checkpoints. */
+  rulePlacements?: RulePlacement[];
   /** Form-control count from the snapshot, so the resumed step budget matches. */
   fillableFields: number;
   /** Full traces of every scenario completed so far. */
@@ -211,6 +213,7 @@ export function loadCheckpoint(file: string): Checkpoint {
     plan: cp.plan,
     ...(Array.isArray(cp.planTrimmed) ? { planTrimmed: cp.planTrimmed } : {}),
     ...(Array.isArray(cp.planSkippedPages) ? { planSkippedPages: cp.planSkippedPages } : {}),
+    ...(Array.isArray(cp.rulePlacements) ? { rulePlacements: cp.rulePlacements } : {}),
     fillableFields: typeof cp.fillableFields === 'number' ? cp.fillableFields : 0,
     completedScenarios: cp.completedScenarios,
     ...(Array.isArray(cp.verdicts) ? { verdicts: cp.verdicts } : {}),

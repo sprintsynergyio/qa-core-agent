@@ -178,7 +178,12 @@ check('B3. a search scenario is rejected (no search box on the page)',
 check('B4. a sort scenario is rejected (no sort control on the page)',
   pageFitReason(sc('sorted by price low to high and products reordered by ascending cost', 'happy', 'catalogue'), rentals)?.control === 'sort');
 check('B5. a navigation scenario is not judged on the price it reads after the click: KEPT on the rentals listing',
-  pageFitReason(sc('clicked a product and landed on its detail page showing matching name and price', 'edge', 'catalogue'), rentals) === null);
+  pageFitReason(sc('clicked a product and landed on its detail page showing name and price', 'edge', 'catalogue'), rentals) === null);
+// A price the name says is the SAME on both pages must be shown on the page the test starts on (invariant 90):
+// runs 9 and 10 planned this name on /rentals, whose cards carry no price; run 9 skipped it, run 10 shipped it with no price compared.
+const b5b = pageFitReason(sc('clicked a product and landed on its detail page showing matching name and price', 'edge', 'catalogue'), rentals);
+check('B5b. a navigation scenario that says the price MATCHES is dropped on a listing with no price to compare',
+  b5b?.control === 'price' && b5b.reason === 'says the price is the same on both pages, and the page snapshot shows no price to compare', JSON.stringify(b5b));
 check('B6. the same price asserted on the listing itself is still dropped',
   pageFitReason(sc('loaded the rentals page and saw products with a price', 'happy', 'catalogue'), rentals)?.control === 'price');
 check('B7. a navigation scenario is still judged on its first action when the name says so: "clicked the sort dropdown" needs a sort control',

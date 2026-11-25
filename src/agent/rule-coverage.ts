@@ -40,7 +40,7 @@ import type { TraceStep } from './trace.js';
  * silently absent.
  */
 
-export type UncoveredReason = 'not-planned' | 'planned-but-dropped' | 'planned-not-explored' | 'not-reachable' | 'not-revealed' | 'robots-disallowed' | 'cut-by-page-cap' | 'cut-by-global-cap' | 'page-not-planned-global-cap' | 'cited-not-exercised';
+export type UncoveredReason = 'not-planned' | 'planned-but-dropped' | 'planned-not-explored' | 'not-reachable' | 'not-revealed' | 'robots-disallowed' | 'cut-by-page-cap' | 'cut-by-global-cap' | 'page-not-planned-global-cap' | 'cited-not-exercised' | 'planned-but-skipped' | 'finding-recorded';
 
 /**
  * The detail a cited-not-exercised rule carries (invariant 89): the shipped
@@ -48,6 +48,29 @@ export type UncoveredReason = 'not-planned' | 'planned-but-dropped' | 'planned-n
  */
 export function citedNotExercisedDetail(names: string[], gaps: ClaimGap[]): string {
   return `cited by ${names.map((n) => JSON.stringify(n)).join(', ')}; no shipped test backs ${gaps.map(gapText).join('; ')}`;
+}
+
+/** How much of a skip reason a coverage detail carries. */
+const SKIP_REASON_CHARS = 160;
+
+/**
+ * The detail a planned-but-skipped rule carries (invariant 90): each citing
+ * scenario the Explorer skipped, with the reason it recorded, cut at 160
+ * characters with a visible mark.
+ */
+export function plannedButSkippedDetail(skips: Array<{ name: string; reason: string }>): string {
+  const cut = (r: string): string => (r.length > SKIP_REASON_CHARS ? `${r.slice(0, SKIP_REASON_CHARS)}…` : r);
+  return skips.map((k) => `${JSON.stringify(k.name)} skipped: ${cut(k.reason.trim())}`).join(' | ');
+}
+
+/** The detail a finding-recorded rule carries (invariant 90): the citing scenarios whose expected outcome did not occur. */
+export function findingRecordedDetail(names: string[]): string {
+  return `the expected outcome did not occur on the page; product behavior to review: ${names.map((n) => JSON.stringify(n)).join(', ')}`;
+}
+
+/** The detail of a rule whose citing scenario ended on an element the agent could not find: a limit of the run, never product behavior (invariant 67). */
+export function elementNotFoundDetail(names: string[]): string {
+  return `the agent could not find an element: ${names.map((n) => JSON.stringify(n)).join(', ')}`;
 }
 
 /** The detail a cut-by-page-cap rule carries: the cut scenarios, by name. */
@@ -280,6 +303,29 @@ export function computeRuleCoverage(opts: {
    * Applied to a rule no planned scenario cited, after the cap reasons.
    */
   probeRules?: Record<string, { reason: UncoveredReason; detail?: string }>;
+  /**
+   * The scenarios the Explorer skipped (report.skipped), with the recorded
+   * reason. A rule whose citing scenarios were skipped, with none dropped
+   * and none a finding, classifies planned-but-skipped with those reasons,
+   * never planned-but-dropped: nothing was recorded, so nothing was dropped
+   * (invariant 90; run b4e41b's R5 was skipped on a page with no products
+   * and read planned-but-dropped with no detail).
+   */
+  skipped?: Array<{ scenario: string; reason: string }>;
+  /**
+   * The run's findings (report.findings) with their kind (findingKindOf). A
+   * rule with a citing scenario that ended as a PRODUCT finding classifies
+   * finding-recorded; one whose citing scenarios ended on an element the
+   * agent could not find stays planned-but-dropped and says so in the
+   * detail (invariant 90).
+   */
+  findings?: Array<{ scenario: string; kind: 'product' | 'locator' }>;
+  /**
+   * Per rule id, what the placement pass found for a rule it could not plan
+   * (placementDetails in plan-pages.ts): the detail of a not-planned rule,
+   * naming what no planned page shows (invariant 90).
+   */
+  placements?: Record<string, string>;
 }): RuleCoverage {
   const covered: RuleCoverage['covered'] = [];
   const uncovered: RuleCoverage['uncovered'] = [];
@@ -293,6 +339,22 @@ export function computeRuleCoverage(opts: {
   const never = (opts.incomplete ?? []).filter((i) => i.reason.startsWith(NEVER_EXPLORED_PREFIX)).map((i) => i.name);
   for (const p of matchPlanned(plannedNames, mid).values()) midScenarioKeys.add(nameKey(p));
   for (const p of matchPlanned(plannedNames, never).values()) unexploredKeys.add(nameKey(p));
+  // A skip and a finding carry the recorded name too: each is claimed onto
+  // the planned name it matches, never compared by exact text.
+  const skipByKey = new Map<string, { name: string; reason: string }>();
+  const skipNames = (opts.skipped ?? []).map((k) => k.scenario);
+  const skipPlanned = matchPlanned(plannedNames, skipNames);
+  for (const k of opts.skipped ?? []) {
+    const p = skipPlanned.get(k.scenario);
+    if (p && !skipByKey.has(nameKey(p))) skipByKey.set(nameKey(p), { name: p, reason: k.reason });
+  }
+  const findingKindByKey = new Map<string, 'product' | 'locator'>();
+  const findingPlanned = matchPlanned(plannedNames, (opts.findings ?? []).map((f) => f.scenario));
+  for (const f of opts.findings ?? []) {
+    const p = findingPlanned.get(f.scenario);
+    // A product finding outranks a locator one on the same scenario.
+    if (p && findingKindByKey.get(nameKey(p)) !== 'product') findingKindByKey.set(nameKey(p), f.kind);
+  }
   const unreachable = new Set(opts.unreachableFeatures ?? []);
   const reasonByKey = new Map<string, string>();
   for (const [name, reason] of opts.dropReasons ?? []) reasonByKey.set(nameKey(name), reason);
@@ -327,6 +389,11 @@ export function computeRuleCoverage(opts: {
       const pageCut = cut.filter((t) => t.cause !== 'global-cap');
       const pageNotPlanned = opts.pageNotPlanned?.[feature.name];
       const probeRule = opts.probeRules?.[rule.id];
+      const productFindings = citing.filter((p) => findingKindByKey.get(nameKey(p.name)) === 'product').map((p) => p.name);
+      const locatorFindings = citing.filter((p) => findingKindByKey.get(nameKey(p.name)) === 'locator').map((p) => p.name);
+      const droppedCiting = citing.filter((p) => reasonByKey.has(nameKey(p.name)));
+      const skippedCiting = citing.map((p) => skipByKey.get(nameKey(p.name))).filter((k): k is { name: string; reason: string } => !!k);
+      const placementDetail = opts.placements?.[rule.id] ?? opts.placements?.[rule.id.toUpperCase()];
       const reason: UncoveredReason =
         citing.length === 0
           ? cut.length > 0
@@ -340,7 +407,13 @@ export function computeRuleCoverage(opts: {
                   : notRevealedDetail !== undefined ? 'not-revealed' : unreachable.has(feature.name) ? 'not-reachable' : 'not-planned'
           : citing.every((p) => unexploredKeys.has(nameKey(p.name)) || midScenarioKeys.has(nameKey(p.name)))
             ? 'planned-not-explored'
-            : 'planned-but-dropped';
+            // A product finding on a citing scenario is the most useful
+            // thing to say about the rule; then a real drop; then a skip.
+            : productFindings.length > 0
+              ? 'finding-recorded'
+              : droppedCiting.length === 0 && locatorFindings.length === 0 && skippedCiting.length > 0
+                ? 'planned-but-skipped'
+                : 'planned-but-dropped';
       // The cause, not the critic's reasons: "rework, not repaired: reserve
       // funds 2 of 14" or "critic reject", one entry per distinct cause.
       const causeOf = (r: string): string => (r.startsWith('rework, not repaired:') ? r.split(':').slice(0, 2).join(':') : r.split(':')[0]!).trim();
@@ -351,7 +424,16 @@ export function computeRuleCoverage(opts: {
         ...(globalCut.length > 0 ? [cutByGlobalCapDetail(globalCut.map((t) => t.name))] : []),
       ].join('; ');
       const detail = reason === 'planned-but-dropped'
-        ? citing.map((p) => reasonByKey.get(nameKey(p.name))).filter((r): r is string => !!r).map(causeOf).filter((r, i, a) => a.indexOf(r) === i).join(' | ')
+        ? [
+            ...citing.map((p) => reasonByKey.get(nameKey(p.name))).filter((r): r is string => !!r).map(causeOf).filter((r, i, a) => a.indexOf(r) === i),
+            ...(locatorFindings.length > 0 ? [elementNotFoundDetail(locatorFindings)] : []),
+          ].join(' | ')
+        : reason === 'finding-recorded'
+          ? findingRecordedDetail(productFindings)
+          : reason === 'planned-but-skipped'
+            ? plannedButSkippedDetail(skippedCiting)
+        : reason === 'not-planned' && citing.length === 0 && !probeRule && placementDetail
+          ? placementDetail
         : citing.length === 0 && cut.length > 0
           ? cutDetail
           : reason === 'page-not-planned-global-cap'

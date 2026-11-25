@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rule coverage counts a rule as covered only when a shipped test that cites it checks what the rule says. A rule that is cited and only partly checked reads `cited-not-exercised`, with the tests that cite it and the part no test checks. Coverage numbers go down where the old count was too kind: run 10 reads 7 of 14 where its report said 10.
 - `scripts/claim-check.ts <run dir>`: prints, for any stored run and with no model call, the test names and the covered rules that the recordings do not back.
 - `smoke-claim-evidence`: the vocabulary, run 10's own recordings, the tool on a fixture site, and the doctrine in both prompts.
+- Rule placement. After every page is planned, a requirement that no planned test cites is planned on a page that shows what the requirement needs, with one small planning call for that rule. A search rule goes to the page that has the search box and a rule that names the home page goes to the home page, whatever feature tag the page filter gave those pages. At most five such calls per run. When the plan is full, the new test replaces a planned test that cites no rule, and the console names the one it replaced.
+- The run report records every rule the placement pass looked at (`rulePlacements`): where it was planned, or why it could not be.
+- `smoke-rule-placement`: the placement decision, the planning loop, the one-rule call, rule coverage, three served pages and a whole run in process.
 
 ### Fixed
 
@@ -25,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Rule coverage has a new reason, `cited-not-exercised`. The dashboard's rule table shows it as "cited, not fully checked".
+- Rule coverage has two more reasons. A rule whose test was skipped reads `planned-but-skipped` with the reason the run recorded, where it used to read `planned-but-dropped` with no reason. A rule whose test ended as a finding reads `finding-recorded`. The dashboard shows them as "planned, skipped" and "finding recorded".
+- A rule that could not be planned on any page now says why (for example, no planned page has a search box), where it used to read `not-planned` with nothing more.
+- A click-through test whose name says the price is the same on both pages is no longer planned on a page that shows no price.
+- A test name that says a "required-field message" was shown is no longer dropped at plan time as if it named a message field.
 - An emitted test that signed in first now opens the page the browser was on after the sign-in. A test of the page the sign-in lands on keeps its checks; it was emitted as an empty test before.
 
 ### Not built yet

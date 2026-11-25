@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url';
 import type { RunReport } from './trace.js';
 import type { RequirementsMap } from './requirements.js';
 import { featureTokenMap } from './requirements.js';
-import { reconcile, unmatchedDropLine } from './reconcile.js';
+import { findingsOf, reconcile, unmatchedDropLine } from './reconcile.js';
+import { findingKindOf } from './finding-kind.js';
+import { placementDetails } from './plan-pages.js';
 import { attachDroppedTraces, recordOf, storeFromDroppedTraces, storeTrace, type TraceRecord } from './dropped-traces.js';
 import { computeRuleCoverage, notRevealedFeatures, pageNotPlannedFeatures } from './rule-coverage.js';
 import { probeRuleReasons } from './state-probe.js';
@@ -443,6 +445,10 @@ export function rebuildAccounting(
         ...(report.planTrimmed ? { planTrimmed: report.planTrimmed } : {}),
         ...(report.discovery && report.planSkippedPages ? { pageNotPlanned: pageNotPlannedFeatures(requirements.features.map((f) => f.name), report.discovery.pages, report.planSkippedPages, featureTokenMap(requirements)) } : {}),
         ...(report.discovery?.stateProbes ? { probeRules: probeRuleReasons(report.discovery.stateProbes) } : {}),
+        // The same skip, finding and placement reasons the runtime classified (invariant 90).
+        ...(report.skipped ? { skipped: report.skipped } : {}),
+        findings: findingsOf(report).map((f) => ({ scenario: f.scenario, kind: findingKindOf(f) })),
+        placements: placementDetails(report.rulePlacements),
       }),
       ...(derivation ? { derivation } : {}),
     };
