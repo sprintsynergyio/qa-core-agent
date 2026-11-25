@@ -25,7 +25,7 @@ export const CUT_MARKER = ' ... (full line in events.jsonl)';
  * resume hint is printed whole too, once, as the last line of the run, by
  * the CLI itself (invariant 40); its mid-run copies are suppressed here.
  */
-const WHOLE_PREFIXES = ['repair pass:', 'repair pass skipped:', 'State probe "'];
+const WHOLE_PREFIXES = ['repair pass:', 'repair pass skipped:', 'State probe "', 'Login probe:'];
 
 /**
  * The console line for one runtime message: null only for the mid-run copy

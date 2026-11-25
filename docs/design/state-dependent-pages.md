@@ -133,6 +133,20 @@ The same mechanism with login as the action.
 
 Decided (PR #46): a scenario that opens a gated URL signed out (for example "visiting /account signed out redirects to login") is not planned in the build PR. The never-navigate rule has no exemption, by category or otherwise. The reached-by block tells the Planner not to plan one, and if one is recorded anyway, end_scenario refuses its navigate to the revealed page like any other. The idea is recorded in the STATE.md audit backlog.
 
+### Built (invariant 88, PR "login action")
+
+Built as designed, with these differences, each for a stated reason:
+
+- `preflightLogin` was not given the anchors and a storage state. The sign-in itself was split out as `signInOn(page, opts)`, and the probe runs it in its own browser context and keeps working in that context. Nothing about the session leaves the context, so there is no storage state to hand around.
+- Detection reads the links, not a token list. Any feature with rules and no page is matched against the links that appear only after sign-in. The token list (`LOGIN_GATED_TOKENS`) is used for two narrow things only: naming a feature as not looked for when there is no account, and deciding whether a feature's one page is worth a signed-out load to check for a login wall.
+- A login wall is found by one signed-out load of the link the signed-in page shows, not from the crawl's record: discovery does not keep the final URL of a redirect.
+- The page the sign-in lands on is a page behind the sign-in, reached by the sign-in alone. The brief did not cover it.
+- The emitted test opens the page the browser was on after the sign-in (`Scenario.signedInUrl`), then clicks through. When the sign-in itself lands on the revealed page, that page is the one opened; there is no other page to open it from.
+- With no requirements map, the links that exist only after sign-in are the pages, up to three.
+- Account safety is new: a scenario that would change the account's password or sign-in identifier, or remove the account, is never planned, and the tool refuses the step.
+
+Not built: a link inside a closed menu, a page that needs both a cart and a sign-in, and a login wall that shows the form in place without changing the path.
+
 ## 8. Cost and politeness
 
 - Model calls. The probe makes none: Playwright and fixed tables only. The Planner makes one Haiku call per revealed page. Runs 4 to 6 paid $0.0038 to $0.0055 per page (`Planner [i/n]` lines in `events.jsonl`), so about $0.005 per revealed page; Toolshop has one (cart), so about $0.005 per run. `PER_PAGE_SCENARIO_CAP` (4) and `GLOBAL_PLAN_CAP` (20) are unchanged, and the revealed page's scenarios count toward both.

@@ -16,6 +16,9 @@ import { parseNumber, noNumberMessage, sameValue } from './parse-number.js';
 import { ALL_ITEMS_FLAGS, chosenOrTypedValueForPattern, escapeForPattern, pollAllItems } from './all-items.js';
 import { scenarioNameKey, claimPlanned } from './rule-coverage.js';
 import { plannedPageViolation, plannedPageRefusal, plannedPageBrokenReason, type PlannedPageEntry } from './planned-page.js';
+import { accountSafetySkipReason, removesAccount } from './account-safety.js';
+import { leadingLogin } from './auth-emit.js';
+import { isVolatilePath } from './volatile-id.js';
 import { adaptiveTimeout, ADAPTIVE_CEILING_MS, ADAPTIVE_FLOOR_MS } from './adaptive-timeout.js';
 import { LOCATOR_EXPECTED_PREFIX, LOCATOR_MESSAGE_PREFIX, failureSummary, type Finding } from './finding-kind.js';
 import {
@@ -947,6 +950,57 @@ function skipCurrentScenario(ctx: ToolContext, reason: string): ToolResult {
   };
 }
 
+/** True when the scenario in progress has signed in with the test account: a marked password fill, then a submit. */
+function signedInWithTestAccount(ctx: ToolContext): boolean {
+  const steps = ctx.current?.steps ?? [];
+  const pass = steps.findIndex((st) => st.kind === 'fill' && st.credential === 'pass');
+  return pass !== -1 && steps.slice(pass + 1).some((st) => st.kind === 'click' || st.kind === 'press');
+}
+
+/**
+ * Account safety (invariant 88): once a scenario has signed in with the test
+ * account, a fill that would change the account is refused before the field
+ * is touched and the scenario is skipped with the reason. A typed value in a
+ * password field is a new password (the current one is filled by marker),
+ * and a different value typed over a field that holds the account's own
+ * identifier is a new sign-in identifier. Both are read off the page, never
+ * off the model's words. Every later stage and run signs in with the same
+ * account, so one such change breaks all of them.
+ */
+async function accountSafetyFillRefusal(ctx: ToolContext, loc: import('@playwright/test').Locator, value: string): Promise<ToolResult | null> {
+  if (!ctx.testCredentials || !signedInWithTestAccount(ctx)) return null;
+  let field: { type: string; value: string };
+  try {
+    field = await loc.evaluate((el) => {
+      const input = el as HTMLInputElement;
+      return { type: String(input.type ?? '').toLowerCase(), value: typeof input.value === 'string' ? input.value : '' };
+    });
+  } catch {
+    return null;
+  }
+  if (field.type === 'password' && value !== '') return skipCurrentScenario(ctx, accountSafetySkipReason('password'));
+  const user = ctx.testCredentials.user.trim().toLowerCase();
+  if (user !== '' && field.value.trim().toLowerCase() === user && value.trim().toLowerCase() !== user) {
+    return skipCurrentScenario(ctx, accountSafetySkipReason('identifier'));
+  }
+  return null;
+}
+
+/** Account safety: once signed in with the test account, a control whose own text names removing the account is never clicked. */
+async function accountSafetyClickRefusal(ctx: ToolContext, loc: import('@playwright/test').Locator): Promise<ToolResult | null> {
+  if (!ctx.testCredentials || !signedInWithTestAccount(ctx)) return null;
+  let text = '';
+  try {
+    text = await loc.evaluate((el) => {
+      const e = el as HTMLElement;
+      return `${e.innerText ?? ''} ${e.getAttribute('aria-label') ?? ''} ${(el as HTMLInputElement).value ?? ''}`;
+    });
+  } catch {
+    return null;
+  }
+  return removesAccount(text) ? skipCurrentScenario(ctx, accountSafetySkipReason('removal')) : null;
+}
+
 /**
  * Refusals decided before the element is touched: a marker with no
  * credentials, the account's email in a reset flow, a typed password in a
@@ -1646,14 +1700,65 @@ const ACTION_TOOLS = new Set(['navigate', 'click', 'fill', 'press', 'select_opti
  * the action's own duration, every other call adds its own. Only time spent
  * inside a tool counts, never the model's thinking between calls.
  */
+/**
+ * The page the browser was on when the tool call that recorded each step
+ * began, per scenario in progress (keyed by its steps array, in memory
+ * only). stampSignedInUrl reads it so the emitted spec of a test that
+ * signed in first knows which page to open (invariant 88).
+ */
+const STEP_URLS = new WeakMap<TraceStep[], string[]>();
+
+/**
+ * Stamp `signedInUrl` on the scenario in progress, before the gate runs.
+ * Only a recording that signed in with the test account by marker at its
+ * start gets one, and only where the emitted spec needs it: the first step
+ * after the sign-in is not a navigate, or, for a scenario planned behind the
+ * sign-in, every check follows the submit (a test of the page the sign-in
+ * lands on). The value is the browser's own URL, origin and path; a path
+ * that carries a generated id is never stamped.
+ */
+function stampSignedInUrl(ctx: ToolContext): void {
+  const s = ctx.current;
+  if (!s) return;
+  const cut = leadingLogin(s.steps);
+  if (!cut) return;
+  if (!s.steps.slice(0, cut.end).some((st) => st.kind === 'fill' && st.credential === 'user')) return;
+  const urls = STEP_URLS.get(s.steps) ?? [];
+  let at: number;
+  if (cut.end < s.steps.length) {
+    if (s.steps[cut.end]!.kind === 'navigate') return;
+    at = cut.end;
+  } else {
+    const plannedName = plannedNameFor(ctx, s.name);
+    if (!(plannedName && ctx.plannedPages.get(plannedName)?.reachedPageUrl)) return;
+    if (cut.submitEnd >= s.steps.length) return;
+    at = s.steps.length - 1;
+  }
+  const raw = urls[at];
+  if (!raw) return;
+  try {
+    const u = new URL(raw);
+    if (!/^https?:$/.test(u.protocol) || isVolatilePath(u.pathname)) return;
+    s.signedInUrl = `${u.origin}${u.pathname}`;
+  } catch { /* not a URL: nothing is stamped */ }
+}
+
 export async function runTool(ctx: ToolContext, call: ToolInput): Promise<ToolResult> {
   const startedAt = Date.now();
   let ok = false;
+  const stepsBefore = ctx.current?.steps;
+  const countBefore = stepsBefore?.length ?? 0;
+  const urlBefore = stepsBefore ? safeUrl(ctx.page) : '';
   try {
     const result = await runToolInner(ctx, call);
     ok = result.ok;
     return result;
   } finally {
+    if (stepsBefore && stepsBefore.length > countBefore) {
+      const urls = STEP_URLS.get(stepsBefore) ?? [];
+      for (let i = countBefore; i < stepsBefore.length; i++) urls[i] = urlBefore;
+      STEP_URLS.set(stepsBefore, urls);
+    }
     // Only a call that succeeded is a settle the page performed. A probe that
     // timed out waited on something that never came (run f3b41e: three
     // 60 s failed probes each inflated the next recorded timeout to 60000);
@@ -1752,6 +1857,8 @@ async function runToolInner(ctx: ToolContext, call: ToolInput): Promise<ToolResu
         const clickGate = actionGateError(call.input);
         if (clickGate) return { ok: false, error: clickGate };
         const { record, loc } = await resolveAndRecord(ctx, call.input as never);
+        const clickSafety = await accountSafetyClickRefusal(ctx, loc);
+        if (clickSafety) return clickSafety;
         await loc.click();
         ctx.lastActionAt = Date.now();
         pushStep(ctx, { kind: 'click', target: record });
@@ -1769,6 +1876,8 @@ async function runToolInner(ctx: ToolContext, call: ToolInput): Promise<ToolResu
         if (credentialRefusal) return credentialRefusal;
         const { record, loc } = await resolveAndRecord(ctx, call.input as never);
         if (credential) return fillCredential(ctx, record, loc, credential, call.input.credential === undefined);
+        const fillSafety = await accountSafetyFillRefusal(ctx, loc, value);
+        if (fillSafety) return fillSafety;
         // Detect the real control type before acting. fill() throws "Element is
         // not an <input>" on a <select>, and silently no-ops nothing useful on a
         // checkbox. Route each control to the action Playwright supports, and
@@ -2297,6 +2406,7 @@ async function runToolInner(ctx: ToolContext, call: ToolInput): Promise<ToolResu
           return { ok: false, error: 'Scenario has no assertions. Add at least one assert, assert_compare, or assert_freeze before end_scenario.' };
         }
 
+        stampSignedInUrl(ctx);
         const gateResult = runGate(ctx.current, { knownNames: knownAccountNames(ctx) });
 
         if (gateResult.violations.length > 0) {
@@ -2422,6 +2532,7 @@ async function runToolInner(ctx: ToolContext, call: ToolInput): Promise<ToolResu
         if (ctx.current) {
           const hasAssert = ctx.current.steps.some((s) => s.kind === 'assert' || s.kind === 'assert_compare');
           if (hasAssert) {
+            stampSignedInUrl(ctx);
             const gateResult = runGate(ctx.current, { knownNames: knownAccountNames(ctx) });
             if (gateResult.violations.length > 0) {
               // No retry at finish time — mark immediately BROKEN

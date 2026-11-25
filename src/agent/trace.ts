@@ -1,7 +1,7 @@
 import type { CascadeLevel, ResolvedLocator } from './selectors.js';
 import type { StageModels } from './stage-models.js';
 import type { DiscoveryMethod, ReachAction, ReachedBy, RobotsSkip } from './discovery.js';
-import type { StateProbe } from './state-probe.js';
+import type { LoginProbeRecord, StateProbe } from './state-probe.js';
 
 /**
  * One scenario a cap cut from a page's plan (invariants 75 and 78): the page
@@ -373,6 +373,14 @@ export interface Scenario {
    */
   ruleIds?: string[];
   steps: TraceStep[];
+  /**
+   * Set when the recording signed in with the test account at its start and
+   * its next step was not a navigate (invariant 88): the page the browser was
+   * on when that step ran, origin and path only. The emitted spec, which
+   * starts on the saved session with the sign-in steps removed, opens this
+   * page first. Read off the browser by the tool, never written by the model.
+   */
+  signedInUrl?: string;
   /** Console messages of level 'error' / 'warning' that fired during the scenario. */
   consoleErrors?: Array<{ kind: 'error' | 'warning'; text: string }>;
   /** Responses with status >= 400 that fired during the scenario. */
@@ -429,6 +437,8 @@ export interface RunReport {
     robotsSkipped?: RobotsSkip[];
     /** One record per state-dependent feature the probe ran on (invariant 71), as in discovery.json. */
     stateProbes?: StateProbe[];
+    /** What the login probe saw when it ran (invariant 88): where it signed in, where it landed, the links that exist only signed in. Absent when it did not run. */
+    loginProbe?: LoginProbeRecord;
   };
   /**
    * Scenarios a cap cut from a page's plan (invariants 75 and 78), each with

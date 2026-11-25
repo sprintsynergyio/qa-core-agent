@@ -15,6 +15,7 @@ import type { RequirementFeature, RequirementRule, RequirementsMap } from './req
 import { emitLocatorCall } from './selectors.js';
 import { currencyAmountIn } from './parse-number.js';
 import { generatedIdFragment, isVolatilePath } from './volatile-id.js';
+import { LOGIN_PATHS, signInOn, type PreflightLoginResult } from './login-preflight.js';
 
 /**
  * State probe: the action-first discovery rung for pages that exist only
@@ -48,7 +49,8 @@ export const STATE_PROBE_REVEAL_WAIT_MS = 3000;
  * Trigger phrases per feature token set. A feature whose path tokens
  * (tokensFor plus featureTokenMap) meet a row's tokens is probed with that
  * row's phrases. The table grows by evidence from runs, never by guessing.
- * Account pages use login as the trigger (brief section 7, not built).
+ * Pages behind a sign-in have no row here: the login probe finds them
+ * (invariant 88, probeLogin below).
  */
 export const STATE_TRIGGERS: ReadonlyArray<{ tokens: string[]; phrases: string[] }> = [
   { tokens: ['cart', 'basket', 'checkout'], phrases: ['add to cart', 'add to basket', 'add to bag'] },
@@ -129,6 +131,13 @@ export interface StateProbe {
    * revealed-side rules still uncited after planning read robots-disallowed.
    */
   robotsBlocked?: { origin: string; path: string; rule: string };
+  /**
+   * Set when the page was looked for behind the sign-in (invariant 88): the
+   * login page the probe signed in on and the page the sign-in landed on.
+   * `gated` is true when the revealed link also exists signed out and a
+   * signed-out load of it ended on the login page.
+   */
+  login?: { loginUrl: string; landing: string; gated?: boolean };
 }
 
 /** A page handle in a fresh browser context. */
@@ -775,6 +784,461 @@ async function defaultPageFactory(): Promise<{ open: ProbePageFactory; close: ()
   };
 }
 
+/* ── The login action (invariant 88) ──────────────────────────────────────── */
+
+/**
+ * Feature tokens that name a page behind a sign-in (design brief section 7).
+ * Used for two narrow decisions only, never to find a page: a feature with
+ * these tokens and no page is named as not looked for when the run has no
+ * test account, and a feature with these tokens whose ONE page is also linked
+ * signed out is checked for a login wall.
+ */
+export const LOGIN_GATED_TOKENS: readonly string[] = ['account', 'profile', 'orders', 'order', 'invoices', 'invoice', 'favorites', 'favorite', 'favourites', 'favourite'];
+/** Most pages the login probe reveals per run. */
+export const LOGIN_PROBE_REVEAL_CAP = 3;
+/** Most signed-out loads the login probe makes per run to check for a login wall. */
+export const LOGIN_GATE_CHECK_CAP = 3;
+/** A link that ends the session is never followed. Whole words, like the deny list. */
+export const LOGIN_LINK_DENY: readonly string[] = ['log out', 'logout', 'sign out', 'signout', 'log off'];
+
+/** The test account and where to sign in. Values are typed into the page and never written anywhere. */
+export interface LoginAccess {
+  /** The run URL. */
+  url: string;
+  /** The --login-url value, when one was given. */
+  loginUrl?: string;
+  user: string;
+  pass: string;
+}
+
+/** One requirements feature as the login probe judges it. */
+export interface LoginCandidateFeature {
+  feature: RequirementFeature;
+  tokens: string[];
+  /** The crawl candidates that carry the feature by page evidence, as page keys. Empty when none does. */
+  carriedBy: string[];
+  /** True when the feature's tokens meet LOGIN_GATED_TOKENS. */
+  gatedTokens: boolean;
+}
+
+/**
+ * The features the login probe judges: every feature with stated rules and
+ * no SRS-stated page, with the candidates that carry it by page evidence
+ * (path segments, never a model-written tag). A feature that at least two
+ * candidates carry is never moved behind the sign-in; the probe decides the
+ * rest from the links it reads off the page.
+ */
+export function detectLoginFeatures(map: RequirementsMap | undefined, candidates: DiscoveredPage[], featureTokens?: Record<string, string[]>): LoginCandidateFeature[] {
+  if (!map) return [];
+  const gated = new Set(LOGIN_GATED_TOKENS);
+  const out: LoginCandidateFeature[] = [];
+  for (const f of map.features) {
+    if (f.rules.length === 0) continue;
+    if (candidates.some((p) => p.source === 'srs' && p.feature === f.name)) continue;
+    const tokens = featureTokensOf(f.name, featureTokens);
+    const carriedBy = [...new Set(pagesCarryingFeature(candidates.filter((p) => p.source !== 'action'), f.name, featureTokens).map((p) => pageKey(p.url)))];
+    if (carriedBy.length > 1) continue;
+    out.push({ feature: f, tokens, carriedBy, gatedTokens: tokens.some((t) => gated.has(t.toLowerCase())) });
+  }
+  return out;
+}
+
+/** The feature a page behind the sign-in is filed under when no requirements map names one: its last path segment, as a slug. */
+export function featureFromPath(url: string): string {
+  let segments: string[] = [];
+  try { segments = new URL(url).pathname.toLowerCase().split('/').filter(Boolean); } catch { segments = []; }
+  const last = (segments[segments.length - 1] ?? 'account').replace(/\.[a-z0-9]+$/, '');
+  return last.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'account';
+}
+
+/** The deny phrase a link after sign-in names (the deny list, or a link that ends the session), or null. */
+export function loginLinkDenied(link: Pick<PageControl, 'label' | 'testid'>): string | null {
+  const words = normalizeWords(`${link.label} ${link.testid ?? ''}`);
+  return deniedBy(words) ?? LOGIN_LINK_DENY.find((p) => hasPhrase(words, p)) ?? null;
+}
+
+/**
+ * The locator a link behind the sign-in is clicked by. A header often shows
+ * the signed-in user's own email as the link text; such a label is never
+ * written into a locator (invariant 70 g), the link is named by its path.
+ */
+export function loginLinkLocator(link: Pick<PageControl, 'role' | 'label' | 'testid' | 'href'>, user: string): string {
+  const u = user.trim().toLowerCase();
+  if (!link.testid && u !== '' && link.label.toLowerCase().includes(u)) {
+    let p = '';
+    try { p = new URL(link.href ?? '').pathname; } catch { p = ''; }
+    if (p) return emitLocatorCall('css', `a[href$=${JSON.stringify(p)}]`).replace(/^page\./, '');
+  }
+  return controlLocator(link);
+}
+
+/** Every string of a snapshot with the test account's identifier replaced, so the Planner never reads it and so never writes it into a name. */
+export function withoutIdentifier<T>(value: T, user: string): T {
+  const u = user.trim();
+  if (u === '') return value;
+  const rx = new RegExp(u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  const walk = (v: unknown): unknown => {
+    if (typeof v === 'string') return v.replace(rx, '[the test account]');
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, walk(x)]));
+    return v;
+  };
+  return walk(value) as T;
+}
+
+/** What the login probe found for one feature. */
+export interface LoginFeatureResult {
+  feature: string;
+  tried: StateProbe['tried'];
+  /** The page behind the sign-in, when one was revealed. */
+  page?: DiscoveredPage & { reachedBy: NonNullable<DiscoveredPage['reachedBy']> };
+  snapshot?: PageSnapshot;
+  /** True when the revealed link also exists signed out and is a login wall there. */
+  gated?: boolean;
+  /** Set when the link was found and robots.txt disallows its path. */
+  robots?: { path: string; rule: string };
+  /** One line: what was revealed, or why nothing was. */
+  detail: string;
+  /** True when a load or a click failed for this feature. */
+  errored?: boolean;
+}
+
+export interface LoginProbeResult {
+  /** The sign-in itself: ok, failed (the form refused the account), unreached (no login page), or error (a browser failure). */
+  outcome: PreflightLoginResult['outcome'] | 'error';
+  loginUrl?: string;
+  landing?: string;
+  /** One entry per feature the probe judged and has something to say about. A feature it had no reason to touch is absent. */
+  features: LoginFeatureResult[];
+  /** Same-origin links that appeared only after sign-in, as paths, in page order. */
+  newLinks: string[];
+  /** The new links no feature claimed and the probe did not reveal, as paths. */
+  unnamed: string[];
+  /** The one console line for the probe, printed whole. */
+  line: string;
+}
+
+export interface LoginProbeOptions {
+  access: LoginAccess;
+  /** The map's features to judge (detectLoginFeatures). Empty with no map. */
+  features: LoginCandidateFeature[];
+  /**
+   * No requirements map: reveal the new links themselves, each filed under
+   * `featureFromPath`, or under the listed feature whose tokens it names when
+   * `names` is given (the --features list).
+   */
+  open?: { names?: string[] };
+  /** Every crawl candidate, to know which links the crawl already found signed out. */
+  candidates: Array<{ url: string }>;
+  robots?: Pick<RobotsInfo, 'disallow'>;
+  openPage?: ProbePageFactory;
+  delayMs?: number;
+  anchorWaitMs?: number;
+  settleCapMs?: number;
+  /** Test seam: replaces the sign-in. */
+  signIn?: typeof signInOn;
+}
+
+/**
+ * The login probe (invariant 88): sign in once with the test account in one
+ * browser context, read the links the page shows, and reveal the pages
+ * behind the sign-in. A link counts for a feature when it names the
+ * feature's tokens and either appeared only after the sign-in, or exists
+ * signed out too and a signed-out load of it ends on the login page (a login
+ * wall). The sign-in types the correct password once, so it adds nothing to
+ * the wrong-password count. The session lives in the probe's own context and
+ * is never written to disk. Never throws.
+ */
+export async function probeLogin(opts: LoginProbeOptions): Promise<LoginProbeResult> {
+  const robots = opts.robots ?? { disallow: [] };
+  const delayMs = opts.delayMs ?? CRAWL_DELAY_MS;
+  const candidateKeys = new Set(opts.candidates.map((c) => pageKey(c.url)));
+  const results = new Map<string, LoginFeatureResult>();
+  const resultFor = (feature: string): LoginFeatureResult => {
+    let r = results.get(feature);
+    if (!r) { r = { feature, tried: [], detail: '' }; results.set(feature, r); }
+    return r;
+  };
+  const brief = (err: unknown): string => ((err as Error)?.message ?? String(err)).split('\n')[0]!.trim().replace(/\.$/, '');
+  const pause = async (): Promise<void> => { if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs)); };
+
+  let browserClose: (() => Promise<void>) | undefined;
+  let open = opts.openPage;
+  const openFresh = async (): Promise<ProbePageHandle> => {
+    if (!open) {
+      const d = await defaultPageFactory();
+      open = d.open;
+      browserClose = d.close;
+    }
+    return open();
+  };
+  /** Every feature with no page gets the same reason when the sign-in itself did not work. */
+  const failAll = (outcome: LoginProbeResult['outcome'], why: string, loginUrl?: string): LoginProbeResult => {
+    const features = opts.features.filter((f) => f.carriedBy.length === 0).map((f): LoginFeatureResult => ({
+      feature: f.feature.name,
+      tried: [{ url: loginUrl ?? opts.access.url, result: why }],
+      detail: `no page revealed: ${why}`,
+      errored: true,
+    }));
+    return { outcome, ...(loginUrl ? { loginUrl } : {}), features, newLinks: [], unnamed: [], line: `Login probe: ${why}; no page behind the sign-in was looked for.` };
+  };
+
+  let handle: ProbePageHandle | undefined;
+  try {
+    handle = await openFresh();
+    const page = handle.page;
+    page.setDefaultTimeout(15_000);
+    let before = new Set<string>();
+    const signed = await (opts.signIn ?? signInOn)(page, { url: opts.access.url, ...(opts.access.loginUrl ? { loginUrl: opts.access.loginUrl } : {}), user: opts.access.user, pass: opts.access.pass }, {
+      beforeSubmit: async (p) => {
+        before = new Set((await readControls(p)).filter((a) => a.role === 'link' && a.href).map((a) => pageKey(a.href!)));
+      },
+    });
+    if (signed.outcome === 'unreached') return failAll('unreached', `no login page was found (tried ${signed.tried.map(pathOf).join(', ')})`);
+    // The page's own words are left out: a login error can repeat the address typed.
+    if (signed.outcome !== 'ok' || !signed.loginUrl) return failAll('failed', `the sign-in on ${pathOf(signed.loginUrl ?? opts.access.url)} gave no positive signal`, signed.loginUrl);
+
+    const loginKey = pageKey(signed.loginUrl);
+    await page.waitForLoadState('load').catch(() => {});
+    await settleForSnapshot(page, opts.settleCapMs);
+    await waitForAnchors(page, opts.anchorWaitMs);
+    const landing = pageKey(page.url());
+    const origin = new URL(landing).origin;
+    const sameOrigin = (href: string): boolean => { try { return new URL(href).origin === origin; } catch { return false; } };
+    /**
+     * The links the signed-in page shows right now: same origin, never the
+     * login page, never the page itself, one per target page. An anchor with
+     * href="#" (a menu toggle) resolves to the page it sits on; it is no link
+     * to a page, and its label ("Categories") must never name one.
+     */
+    const readLinks = async (): Promise<PageControl[]> => {
+      const seen = new Set<string>();
+      const here = pageKey(page.url());
+      return (await readControls(page)).filter((a) => {
+        if (a.role !== 'link' || !a.href || !sameOrigin(a.href)) return false;
+        const key = pageKey(a.href);
+        if (key === loginKey || key === here || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+    const back = async (): Promise<void> => {
+      if (pageKey(page.url()) === landing) return;
+      await pause();
+      await page.goto(landing, { waitUntil: 'load', timeout: 15_000 });
+      await settleForSnapshot(page, opts.settleCapMs);
+      await waitForAnchors(page, opts.anchorWaitMs);
+    };
+    const links = await readLinks();
+    // The page the sign-in landed on is a page behind the sign-in too, reached
+    // by the sign-in alone. It is named by its path only, never by a label.
+    const landingLink: PageControl | null = landing !== loginKey ? { index: -1, tag: 'a', role: 'link', label: '', href: landing } : null;
+    const all = [...(landingLink ? [landingLink] : []), ...links];
+    const isNew = (l: PageControl): boolean => !before.has(pageKey(l.href!)) && !candidateKeys.has(pageKey(l.href!));
+    const followable = (l: PageControl): boolean => {
+      try { if (isVolatilePath(new URL(l.href!).pathname)) return false; } catch { return false; }
+      return loginLinkDenied(l) === null;
+    };
+    const newLinks = all.filter((l) => isNew(l) && followable(l));
+    const revealedKeys = new Set<string>();
+    let reveals = 0;
+    let gateChecks = 0;
+
+    /** A signed-out load of the link: a login wall when it ends on another path that is the login page or shows a password field. */
+    const loginWall = async (href: string): Promise<{ wall: boolean; final: string }> => {
+      await pause();
+      const h = await openFresh();
+      try {
+        await h.page.goto(href, { waitUntil: 'load', timeout: 15_000 });
+        await settleForSnapshot(h.page, opts.settleCapMs);
+        // A client-side guard redirects a moment after the shell loads.
+        const deadline = Date.now() + 1500;
+        while (Date.now() < deadline && pageKey(h.page.url()) === pageKey(href)) await new Promise((r) => setTimeout(r, 150));
+        const final = pageKey(h.page.url());
+        if (final === pageKey(href)) return { wall: false, final };
+        const finalPath = pathOf(final).replace(/\/+$/, '') || '/';
+        const password = (await h.page.locator('input[type="password"]').count().catch(() => 0)) > 0;
+        return { wall: final === loginKey || LOGIN_PATHS.includes(finalPath) || password, final };
+      } finally {
+        await h.close().catch(() => {});
+      }
+    };
+
+    /** Follow the link in the signed-in context and snapshot what it opens. */
+    const reveal = async (feature: string, link: PageControl, gated: boolean): Promise<void> => {
+      const r = resultFor(feature);
+      const target = pageKey(link.href!);
+      const path = pathOf(target);
+      const viaLanding = target === landing;
+      const control = viaLanding ? undefined : loginLinkLocator(link, opts.access.user);
+      try {
+        await back();
+        if (!viaLanding) {
+          const now = (await readControls(page)).find((a) => a.role === 'link' && a.href && pageKey(a.href) === target);
+          if (!now) {
+            r.tried.push({ url: landing, ...(control ? { control } : {}), result: `signed in, the link to ${path} was no longer on ${pathOf(landing)}` });
+            r.errored = true;
+            r.detail = `no page revealed: signed in on ${pathOf(loginKey)}, the link to ${path} was no longer on ${pathOf(landing)}`;
+            return;
+          }
+          await pause();
+          await page.locator(CONTROL_SELECTOR).nth(now.index).click({ timeout: 5000 });
+          await page.waitForURL((u) => pageKey(u.toString()) === target, { timeout: 10_000 }).catch(() => {});
+          await page.waitForLoadState('load').catch(() => {});
+        }
+        await settleForSnapshot(page, opts.settleCapMs);
+        const snapshot = withoutIdentifier(await snapshotPage(page), opts.access.user);
+        const actions: ReachAction[] = [{ kind: 'login' }, ...(control ? [{ kind: 'click', control } as ReachAction] : [])];
+        r.page = { url: target, source: 'action', feature, reachedBy: { origin: loginKey, feature, actions } };
+        r.snapshot = snapshot;
+        if (gated) r.gated = true;
+        r.tried.push({ url: landing, ...(control ? { control } : {}), result: viaLanding ? `signed in, landed on ${path}` : `signed in, clicked ${control}, revealed ${path}` });
+        r.detail = `revealed ${path} after sign-in on ${pathOf(loginKey)}${gated ? ` (signed out, ${path} ends on the login page)` : ''}`;
+        revealedKeys.add(target);
+        reveals++;
+      } catch (err) {
+        r.tried.push({ url: landing, ...(control ? { control } : {}), result: `signed in, opening ${path} failed (${brief(err)})` });
+        r.errored = true;
+        r.detail = `no page revealed: signed in on ${pathOf(loginKey)}, opening ${path} failed (${brief(err)})`;
+      }
+    };
+
+    // Every (feature, link) pair where the link names the feature, best
+    // first: a link whose last path segment is the feature's own name, then
+    // one whose last segment is any of its tokens, then a link that appeared
+    // only after sign-in, then the shallower path, then the most tokens. A
+    // feature takes one link and a link serves one feature, so "account"
+    // (whose tokens include "profile") never takes /account/profile from a
+    // feature called "profile".
+    const lastSegment = (l: PageControl): string => {
+      try { return new URL(l.href!).pathname.toLowerCase().split('/').filter(Boolean).pop() ?? ''; } catch { return ''; }
+    };
+    const depthOf = (l: PageControl): number => pathOf(pageKey(l.href!)).split('/').filter(Boolean).length;
+    /** The feature's own name as path segments read it: the whole name hyphenated, and each of its words. */
+    const nameSlugs = (name: string): string[] => {
+      const w = name.trim().toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+      return [...new Set([w.join('-'), ...w])];
+    };
+    const pairs = opts.features.flatMap((f, order) => all
+      .filter((l) => followable(l))
+      .map((l) => ({
+        f,
+        order,
+        l,
+        n: linkTokenMatches(l, f.tokens),
+        own: segmentMatchesTokens(lastSegment(l), nameSlugs(f.feature.name)),
+        last: segmentMatchesTokens(lastSegment(l), f.tokens),
+        fresh: isNew(l),
+      }))
+      .filter((m) => m.n > 0))
+      .sort((x, y) => Number(y.own) - Number(x.own) || Number(y.last) - Number(x.last) || Number(y.fresh) - Number(x.fresh) || depthOf(x.l) - depthOf(y.l) || y.n - x.n || x.order - y.order || x.l.index - y.l.index);
+    const done = new Set<string>();
+    for (const m of pairs) {
+      const f = m.f;
+      const name = f.feature.name;
+      const target = pageKey(m.l.href!);
+      if (done.has(name) || revealedKeys.has(target)) continue;
+      const noPage = f.carriedBy.length === 0;
+      const path = pathOf(target);
+      let gated = false;
+      if (m.fresh) {
+        // A public feature that merely gains a link after sign-in keeps its own page.
+        if (!noPage) continue;
+      } else {
+        // The link exists signed out too: only a login wall makes it a page behind the sign-in.
+        const onlyCarrier = noPage || (f.gatedTokens && f.carriedBy.length === 1 && f.carriedBy[0] === target);
+        if (!onlyCarrier) continue;
+        const r = resultFor(name);
+        if (gateChecks >= LOGIN_GATE_CHECK_CAP) {
+          r.tried.push({ url: target, result: `signed-out check cap ${LOGIN_GATE_CHECK_CAP} reached; ${path} not checked for a login wall` });
+          r.detail = `no page revealed: signed-out check cap ${LOGIN_GATE_CHECK_CAP} reached before ${path} was checked for a login wall`;
+          continue;
+        }
+        gateChecks++;
+        let wall: { wall: boolean; final: string };
+        try {
+          wall = await loginWall(m.l.href!);
+        } catch (err) {
+          r.tried.push({ url: target, result: `signed-out load failed (${brief(err)})` });
+          r.errored = true;
+          r.detail = `no page revealed: the signed-out load of ${path} failed (${brief(err)})`;
+          continue;
+        }
+        if (!wall.wall) {
+          // The page loads without a sign-in: it is planned like any other page, as before.
+          if (noPage) {
+            r.tried.push({ url: target, result: `signed out, ${path} loads without a sign-in` });
+            r.detail = `no page revealed: ${path} loads without a sign-in and is linked signed out, so it is not a page behind the sign-in`;
+          } else if (r.tried.length === 0) {
+            results.delete(name);
+          }
+          continue;
+        }
+        gated = true;
+        r.errored = false;
+        r.tried.push({ url: target, result: `signed out, ${path} ends on ${pathOf(wall.final)}` });
+      }
+      const rule = robotsRuleFor(robots, path);
+      const r = resultFor(name);
+      if (rule !== null) {
+        r.tried.push({ url: landing, result: `signed in, a link to ${path} is there, but robots.txt disallows ${path}` });
+        r.robots = { path, rule };
+        r.detail = `no page revealed: signed in on ${pathOf(loginKey)}, robots.txt disallows ${path} (rule Disallow: ${rule})`;
+        done.add(name);
+        continue;
+      }
+      if (reveals >= LOGIN_PROBE_REVEAL_CAP) {
+        r.tried.push({ url: landing, result: `reveal cap ${LOGIN_PROBE_REVEAL_CAP} reached; ${path} not opened` });
+        r.detail = `no page revealed: reveal cap ${LOGIN_PROBE_REVEAL_CAP} reached before ${path} was opened`;
+        done.add(name);
+        continue;
+      }
+      await reveal(name, m.l, gated);
+      if (r.page) done.add(name);
+    }
+    // A feature with no page of its own that nothing behind the sign-in names says so.
+    for (const f of opts.features) {
+      const name = f.feature.name;
+      if (f.carriedBy.length > 0 || results.has(name)) continue;
+      const r = resultFor(name);
+      r.tried.push({ url: landing, result: `signed in, no link on ${pathOf(landing)} names ${name}` });
+      r.detail = `no page revealed: signed in on ${pathOf(loginKey)}, no link on ${pathOf(landing)} names ${name}`;
+    }
+
+    // No requirements map: the new links are the pages behind the sign-in.
+    if (opts.open) {
+      const names = (opts.open.names ?? []).map((n) => n.trim()).filter((n) => n.length > 0);
+      for (const l of newLinks) {
+        if (reveals >= LOGIN_PROBE_REVEAL_CAP) break;
+        const target = pageKey(l.href!);
+        if (revealedKeys.has(target)) continue;
+        const named = names.find((n) => linkTokenMatches(l, tokensFor(n)) > 0);
+        if (names.length > 0 && !named) continue;
+        if (robotsRuleFor(robots, pathOf(target)) !== null) continue;
+        const feature = named ?? featureFromPath(target);
+        if (results.get(feature)?.page) continue;
+        await reveal(feature, l, false);
+      }
+    }
+
+    const features = [...results.values()];
+    const revealedList = features.filter((f) => f.page).map((f) => `${pathOf(f.page!.url)} (${f.feature})`);
+    const newPaths = newLinks.map((l) => pathOf(pageKey(l.href!)));
+    const unnamed = newLinks.map((l) => pageKey(l.href!)).filter((k) => !revealedKeys.has(k)).map(pathOf);
+    const parts = [
+      `Login probe: signed in on ${pathOf(loginKey)}, landed on ${pathOf(landing)}`,
+      revealedList.length > 0 ? `revealed ${revealedList.join(', ')}` : 'no page revealed',
+      ...(unnamed.length > 0 ? [`${opts.open ? 'also behind the sign-in, not opened' : 'also behind the sign-in, named by no requirements feature'}: ${unnamed.join(', ')}`] : []),
+    ];
+    return { outcome: 'ok', loginUrl: loginKey, landing, features, newLinks: newPaths, unnamed, line: parts.join('; ') };
+  } catch (err) {
+    return failAll('error', `the login probe failed (${brief(err) || 'unknown error'})`);
+  } finally {
+    await handle?.close().catch(() => {});
+    await browserClose?.().catch(() => {});
+  }
+}
+
 /* ── Lines ────────────────────────────────────────────────────────────────── */
 
 /** The actions as a reader follows them: "click an item" for the item hop (with the item link the hop used, when known), else the control. */
@@ -818,6 +1282,10 @@ export function stateProbeLine(probe: StateProbe, reachedBy?: { actions: ReachAc
   }
   const n = probe.rulesSplit.length;
   const plural = (k: number): string => `rule${k === 1 ? '' : 's'}`;
+  // No test account (invariant 88): nothing behind the sign-in was looked for, and the line says so.
+  if (probe.outcome === 'no-credentials') {
+    return `${head} not looked for behind the sign-in (${probe.detail}); any of its ${n} ${plural(n)} still uncited after planning will report not-revealed`;
+  }
   // A robots-blocked reveal found its origin: the origin rules are planned
   // there, and the rest read robots-disallowed, never not-revealed.
   const rb = probe.robotsBlocked;
@@ -849,6 +1317,8 @@ export interface RevealedFeature {
   revealedRuleIds: string[];
   /** Set when the item hop found the trigger: the item page is the origin, planned from its own snapshot and reached by a click (invariant 78). */
   originPage?: OriginPage;
+  /** Set when the page is behind the sign-in (invariant 88): the origin is the login page, which carries none of the feature's rules. */
+  viaLogin?: true;
 }
 
 /**
@@ -870,14 +1340,39 @@ export interface StateProbesResult {
   revealed: RevealedFeature[];
   /** Features whose revealed page robots.txt disallows, each with the origin its origin rules are planned on. */
   blocked: BlockedFeature[];
-  /** The console lines, in order: per feature, the probe line then the rule split line. */
+  /** The console lines, in order: per feature, the probe line then the rule split line; then the login probe's own line. */
   lines: string[];
+  /** What the login probe saw, when it ran (invariant 88). */
+  loginProbe?: LoginProbeRecord;
+}
+
+/** The login probe as the run records it: where it signed in, where it landed, and the links that exist only signed in. */
+export interface LoginProbeRecord {
+  outcome: LoginProbeResult['outcome'];
+  loginUrl?: string;
+  landing?: string;
+  /** Paths of the same-origin links that appeared only after sign-in. */
+  newLinks: string[];
+  /** Paths of the pages revealed and planned. */
+  revealed: string[];
+  /** Paths of the new links no feature claimed. */
+  unnamed: string[];
 }
 
 /**
  * Detect the state-dependent features and probe each one. Sequential, one
  * feature at a time. With no candidate feature nothing loads and nothing is
  * printed.
+ *
+ * The login action (invariant 88) runs after the click probes when `login`
+ * is given. With a test account the probe signs in once and reveals the
+ * pages behind the sign-in: for a requirements map, per feature with rules
+ * and no page of its own (or one page that is a login wall); with no map,
+ * the links that appear only after sign-in. With no account, a feature with
+ * no page whose tokens name an account page is recorded as not looked for
+ * (outcome no-credentials), never left as a quiet not-planned. A feature has
+ * one probe record: a click probe that revealed nothing and a login probe
+ * share it.
  */
 export async function runStateProbes(opts: {
   map: RequirementsMap | undefined;
@@ -891,12 +1386,17 @@ export async function runStateProbes(opts: {
   revealWaitMs?: number;
   anchorWaitMs?: number;
   settleCapMs?: number;
+  /**
+   * The login action: the test account when the run has one, else why it has
+   * none (`unavailable`: no credentials, or no login page found). `names` is
+   * the --features list, read only when there is no requirements map.
+   */
+  login?: { access?: LoginAccess; unavailable?: string; names?: string[]; signIn?: typeof signInOn };
 }): Promise<StateProbesResult> {
   const features = detectStateFeatures(opts.map, opts.candidates, opts.featureTokens);
-  const probes: StateProbe[] = [];
+  const entries: Array<{ probe: StateProbe; reachedBy?: { actions: ReachAction[] } }> = [];
   const revealed: RevealedFeature[] = [];
   const blocked: BlockedFeature[] = [];
-  const lines: string[] = [];
   const candidates: ProbeCandidate[] = opts.candidates
     .filter((p) => p.source !== 'action')
     .map((p) => ({ url: p.url, ...(p.volatile ? { volatile: true } : {}), ...(p.linkedFrom ? { linkedFrom: p.linkedFrom } : {}), ...(opts.pageControls?.[p.url] ? { controls: opts.pageControls[p.url] } : {}) }));
@@ -919,8 +1419,7 @@ export async function runStateProbes(opts: {
       ...(r.snapshot ? { revealedTitle: r.snapshot.title, revealedHeadings: r.snapshot.headings.map((h) => h.label ?? '') } : {}),
     });
     const probe: StateProbe = { ...r.probe, rulesSplit };
-    probes.push(probe);
-    lines.push(stateProbeLine(probe, r.page?.reachedBy), rulesSplitLine(probe));
+    entries.push({ probe, ...(r.page?.reachedBy ? { reachedBy: r.page.reachedBy } : {}) });
     const originRuleIds = rulesSplit.filter((s) => s.side === 'origin').map((s) => s.ruleId);
     const revealedRuleIds = rulesSplit.filter((s) => s.side === 'revealed').map((s) => s.ruleId);
     if (r.page?.reachedBy && r.snapshot) {
@@ -936,5 +1435,99 @@ export async function runStateProbes(opts: {
       blocked.push({ feature: f.feature.name, origin: r.blocked.origin, ...(r.blocked.originPage ? { originPage: r.blocked.originPage } : {}), originRuleIds, revealedRuleIds });
     }
   }
-  return { probes, revealed, blocked, lines };
+
+  // The login action. A feature the click probe settled (revealed, or its
+  // origin found behind robots) is left as it is.
+  const settled = new Set([...revealed.map((r) => r.feature), ...blocked.map((b) => b.feature)]);
+  const loginFeatures = opts.login ? detectLoginFeatures(opts.map, opts.candidates, opts.featureTokens).filter((f) => !settled.has(f.feature.name)) : [];
+  let loginLine: string | undefined;
+  let loginProbe: LoginProbeRecord | undefined;
+  /** Every rule of a page behind the sign-in is planned on that page: the login page carries none of them. */
+  const allRevealed = (f: RequirementFeature): StateProbe['rulesSplit'] => f.rules.map((r) => ({ ruleId: r.id, side: 'revealed' as const }));
+  if (opts.login?.access && (loginFeatures.length > 0 || !opts.map)) {
+    const lr = await probeLogin({
+      access: opts.login.access,
+      features: loginFeatures,
+      ...(!opts.map ? { open: { ...(opts.login.names ? { names: opts.login.names } : {}) } } : {}),
+      candidates,
+      ...(opts.robots ? { robots: opts.robots } : {}),
+      ...(opts.openPage ? { openPage: opts.openPage } : {}),
+      ...(opts.delayMs !== undefined ? { delayMs: opts.delayMs } : {}),
+      ...(opts.anchorWaitMs !== undefined ? { anchorWaitMs: opts.anchorWaitMs } : {}),
+      ...(opts.settleCapMs !== undefined ? { settleCapMs: opts.settleCapMs } : {}),
+      ...(opts.login.signIn ? { signIn: opts.login.signIn } : {}),
+    });
+    loginLine = lr.line;
+    loginProbe = {
+      outcome: lr.outcome,
+      ...(lr.loginUrl ? { loginUrl: lr.loginUrl } : {}),
+      ...(lr.landing ? { landing: lr.landing } : {}),
+      newLinks: lr.newLinks,
+      revealed: lr.features.filter((f) => f.page).map((f) => pathOf(f.page!.url)),
+      unnamed: lr.unnamed,
+    };
+    const login = lr.loginUrl && lr.landing ? { loginUrl: lr.loginUrl, landing: lr.landing } : undefined;
+    for (const fr of lr.features) {
+      const mapped = loginFeatures.find((f) => f.feature.name === fr.feature);
+      const rulesSplit = mapped ? allRevealed(mapped.feature) : [];
+      const existing = entries.find((e) => e.probe.feature === fr.feature);
+      if (fr.page && fr.snapshot) {
+        const probe: StateProbe = {
+          feature: fr.feature,
+          outcome: 'revealed',
+          origins: [fr.page.reachedBy.origin],
+          tried: [...(existing?.probe.tried ?? []), ...fr.tried],
+          revealed: fr.page.url,
+          detail: fr.detail,
+          rulesSplit,
+          ...(login ? { login: { ...login, ...(fr.gated ? { gated: true } : {}) } } : {}),
+        };
+        if (existing) { existing.probe = probe; existing.reachedBy = fr.page.reachedBy; } else entries.push({ probe, reachedBy: fr.page.reachedBy });
+        revealed.push({ feature: fr.feature, page: fr.page, snapshot: fr.snapshot, originRuleIds: [], revealedRuleIds: rulesSplit.map((s) => s.ruleId), viaLogin: true });
+        continue;
+      }
+      if (existing) {
+        // The click probe revealed nothing and neither did the sign-in: one record says both.
+        existing.probe = {
+          ...existing.probe,
+          tried: [...existing.probe.tried, ...fr.tried],
+          detail: `${existing.probe.detail}; behind the sign-in: ${fr.detail.replace(/^no page revealed: /, '')}`,
+          ...(login ? { login } : {}),
+        };
+        continue;
+      }
+      entries.push({
+        probe: {
+          feature: fr.feature,
+          outcome: fr.robots ? 'robots' : fr.errored ? 'error' : 'no-new-link',
+          origins: [],
+          tried: fr.tried,
+          detail: fr.detail,
+          rulesSplit,
+          ...(fr.robots && login ? { robotsBlocked: { origin: login.loginUrl, path: fr.robots.path, rule: fr.robots.rule } } : {}),
+          ...(login ? { login } : {}),
+        },
+      });
+    }
+  } else if (opts.login && !opts.login.access) {
+    const why = opts.login.unavailable ?? 'test credentials not provided';
+    for (const f of loginFeatures) {
+      if (f.carriedBy.length > 0 || !f.gatedTokens) continue;
+      const existing = entries.find((e) => e.probe.feature === f.feature.name);
+      if (existing) {
+        existing.probe = { ...existing.probe, detail: `${existing.probe.detail}; not looked for behind the sign-in (${why})` };
+        continue;
+      }
+      entries.push({ probe: { feature: f.feature.name, outcome: 'no-credentials', origins: [], tried: [], detail: why, rulesSplit: allRevealed(f.feature) } });
+    }
+  }
+
+  const lines: string[] = [];
+  for (const e of entries) {
+    lines.push(stateProbeLine(e.probe, e.reachedBy));
+    // A page filed with no requirements map has no rules to split.
+    if (opts.map) lines.push(rulesSplitLine(e.probe));
+  }
+  if (loginLine) lines.push(loginLine);
+  return { probes: entries.map((e) => e.probe), revealed, blocked, lines, ...(loginProbe ? { loginProbe } : {}) };
 }

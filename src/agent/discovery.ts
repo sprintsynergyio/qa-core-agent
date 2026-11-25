@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Page } from 'playwright';
 import { featureTokenMap, type RequirementsMap } from './requirements.js';
 import { pagesCarryingFeature } from './page-filter.js';
-import type { PageControl, StateProbe } from './state-probe.js';
+import type { PageControl, LoginProbeRecord, StateProbe } from './state-probe.js';
 import { isVolatilePath } from './volatile-id.js';
 
 /**
@@ -52,8 +52,9 @@ import { isVolatilePath } from './volatile-id.js';
  * `control` is the locator as emitLocatorCall writes it, without the page
  * receiver: getByTestId("nav-cart"). `via: 'item-link'` is the click on an
  * item by its visible name that leaves the stable origin for a volatile item
- * page (invariant 42). Only 'click' is recorded today; 'login' is designed
- * (docs/design/state-dependent-pages.md section 7), not built.
+ * page (invariant 42). `kind: 'login'` is the sign-in with the test account
+ * that opens a page behind it (invariant 88,
+ * docs/design/state-dependent-pages.md section 7); it carries no control.
  */
 export interface ReachAction {
   kind: 'click' | 'login';
@@ -1048,7 +1049,7 @@ export async function waitForAnchors(page: Pick<Page, 'evaluate'>, capMs = ANCHO
  * warnings) to discovery.json in the run directory, so the candidate set a
  * run saw is a file, not a lost console line.
  */
-export function writeDiscoveryJson(outDir: string, info: { method: string; pages: DiscoveredPage[]; candidates?: DiscoveredPage[]; warnings: string[]; stateProbes?: StateProbe[]; robotsSkipped?: RobotsSkip[] }): string {
+export function writeDiscoveryJson(outDir: string, info: { method: string; pages: DiscoveredPage[]; candidates?: DiscoveredPage[]; warnings: string[]; stateProbes?: StateProbe[]; robotsSkipped?: RobotsSkip[]; loginProbe?: LoginProbeRecord }): string {
   fs.mkdirSync(outDir, { recursive: true });
   const file = path.join(outDir, 'discovery.json');
   // A page found by an action is a page, never a crawled candidate: the
@@ -1061,6 +1062,8 @@ export function writeDiscoveryJson(outDir: string, info: { method: string; pages
     // Every path a remote rung skipped for robots (invariant 75); absent when no remote rung ran.
     ...(info.robotsSkipped ? { robotsSkipped: info.robotsSkipped } : {}),
     ...(info.stateProbes && info.stateProbes.length > 0 ? { stateProbes: info.stateProbes } : {}),
+    // What the login probe saw (invariant 88); absent when it did not run.
+    ...(info.loginProbe ? { loginProbe: info.loginProbe } : {}),
   };
   fs.writeFileSync(file, JSON.stringify(record, null, 2));
   return file;

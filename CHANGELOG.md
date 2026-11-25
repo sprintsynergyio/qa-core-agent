@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Pages behind a sign-in. With a test account in the environment, discovery signs in once and looks for the pages the sign-in opens (the account page, a profile, invoices). Each one is planned from its signed-in snapshot, reached by the sign-in and a click, and never opened by its URL. The console prints one `Login probe:` line that also names the pages behind the sign-in that no requirements feature covers. With no test account, a feature that names an account page is recorded as not looked for, with the reason.
+- Account safety behind the sign-in: a test that would change the test account's password or sign-in email, or delete the account, is never planned, and the tool refuses the step if one is recorded anyway.
+- `scripts/probe-login.ts <url>`: runs discovery and the login probe alone, with no model call and nothing written, and prints the pages a run would find behind the sign-in.
+- `smoke-login-action`: a fixture site with pages behind a login, the probe, the plan, the tools, the emitted framework run with Playwright in TypeScript and JavaScript, and a whole run in process.
+
+### Changed
+
+- An emitted test that signed in first now opens the page the browser was on after the sign-in. A test of the page the sign-in lands on keeps its checks; it was emitted as an empty test before.
+
+### Not built yet
+
+- A link inside a menu that is closed until clicked is not seen by the login probe.
+- A page that needs both an item in the cart and a sign-in is not reached.
+
 ## [0.3.0] - 2026-11-20
 
 Release readiness. Not tagged yet.

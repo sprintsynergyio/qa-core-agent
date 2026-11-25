@@ -152,6 +152,15 @@ export const FEATURE_PATH_TOKENS: Record<string, string[]> = {
   contact: ['contact'],
   search: ['search'],
   account: ['account', 'profile'],
+  // Pages behind a sign-in (invariant 88, design brief section 7). Each is
+  // its own feature, so /account/orders and /account/invoices are never one
+  // path template.
+  orders: ['orders', 'order', 'order-history'],
+  order: ['orders', 'order', 'order-history'],
+  invoices: ['invoices', 'invoice'],
+  invoice: ['invoices', 'invoice'],
+  favorites: ['favorites', 'favorite', 'favourites', 'favourite'],
+  favourites: ['favorites', 'favorite', 'favourites', 'favourite'],
 };
 
 /**

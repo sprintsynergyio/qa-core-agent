@@ -1,3 +1,4 @@
+import { accountSafetyLine, accountSafetyReason } from './account-safety.js';
 import type { DiscoveredPage, ReachAction } from './discovery.js';
 import { pagesCarryingFeature } from './page-filter.js';
 import { crossPageBasisText, dedupeAcrossPages, pageFitRejectionLine, uniqueScenarioNames, type CarriesFeature, type PageSnapshot, type PlannedScenario, type PlanResult, type RuleRetry } from './planner.js';
@@ -140,10 +141,15 @@ export function buildPlanTargets(opts: {
     return { requirements, features };
   };
   const targets: PlanTarget[] = [];
-  const pages: DiscoveredPage[] = [...opts.pages];
+  // A page behind the sign-in that the crawl also found signed out is a
+  // login wall there (invariant 88): it is planned once, signed in, from the
+  // probe's snapshot, and never from its signed-out load.
+  const walls = new Set(revealed.filter((r) => r.viaLogin).map((r) => pageKey(r.page.url)));
+  const kept = opts.pages.filter((pg) => !walls.has(pageKey(pg.url)));
+  const pages: DiscoveredPage[] = [...kept];
   const placed = new Set<string>();
   const placedBlocked = new Set<string>();
-  for (const pg of opts.pages) {
+  for (const pg of kept) {
     let requirements = narrowRules(subMapFor(opts.map, pg.feature), originRules);
     let features = pg.feature ? [pg.feature] : opts.features;
     const originOf: string[] = [];
@@ -151,9 +157,10 @@ export function buildPlanTargets(opts: {
     const hereBlocked = blocked.filter((b) => pageKey(b.origin) === pageKey(pg.url));
     // The origin's call carries the feature's origin rules even when the
     // page is tagged with another feature; with the hop the item page is the
-    // origin and carries them instead.
+    // origin and carries them instead. The login page carries none of the
+    // rules of a page behind the sign-in.
     for (const r of here) {
-      if (r.originPage) continue;
+      if (r.originPage || r.viaLogin) continue;
       ({ requirements, features } = carryOriginRules(requirements, features, r.feature, r.originRuleIds));
       originOf.push(r.feature);
     }
@@ -230,6 +237,8 @@ export interface PlanAcrossPagesResult {
   citationDrops: Array<{ scenario: string; ruleId: string; reason: string }>;
   pageFitRejected: PlannedScenario[];
   contradictionRejected: PlannedScenario[];
+  /** Scenarios planned behind the sign-in that would change or remove the test account itself (invariant 88). Never in `combined`. */
+  accountSafetyRejected: Array<{ scenario: PlannedScenario; reason: string }>;
   /** The plan calls' cost only (the page filter's is the caller's). */
   plannerUsd: number;
   fillableMax: number;
@@ -263,6 +272,7 @@ export async function planAcrossPages(opts: {
   const citationDrops: PlanAcrossPagesResult['citationDrops'] = [];
   const pageFitRejected: PlannedScenario[] = [];
   const contradictionRejected: PlannedScenario[] = [];
+  const accountSafetyRejected: PlanAcrossPagesResult['accountSafetyRejected'] = [];
   let plannerUsd = 0;
   let fillableMax = 0;
   let planCapHit = false;
@@ -316,6 +326,19 @@ export async function planAcrossPages(opts: {
       contradictionRejected.push(placeOf(r.scenario));
     }
     for (const rr of p.ruleRetries) onMessage(ruleRetryLine(rr));
+    // Behind the sign-in every scenario uses the one test account, and every
+    // later stage and run signs in with it again: a scenario that would
+    // change its password or sign-in email, or remove it, is never planned.
+    if (t.reachedBy?.actions.some((a) => a.kind === 'login')) {
+      const safe: PlannedScenario[] = [];
+      for (const sc of scen) {
+        const reason = accountSafetyReason(sc.name);
+        if (!reason) { safe.push(sc); continue; }
+        onMessage(accountSafetyLine(sc.name, pg.url, reason));
+        accountSafetyRejected.push({ scenario: sc, reason });
+      }
+      scen = safe;
+    }
     if (scen.length > PER_PAGE_SCENARIO_CAP) {
       planCapHit = true;
       // A rule's only citer on this page is kept first; every cut scenario
@@ -368,7 +391,7 @@ export async function planAcrossPages(opts: {
     const label = t.reachedBy ? `${pg.url} (reached by action from ${t.reachedBy.origin})` : pg.url;
     onMessage(`Planner [${idx + 1}/${targets.length}] ${label}: ${scen.length} scenario(s) · $${p.costUsd.toFixed(4)}`);
   }
-  return { combined, dropped, rejected, citationDrops, pageFitRejected, contradictionRejected, plannerUsd, fillableMax, planCapHit, planTrimmed, planSkippedPages };
+  return { combined, dropped, rejected, citationDrops, pageFitRejected, contradictionRejected, accountSafetyRejected, plannerUsd, fillableMax, planCapHit, planTrimmed, planSkippedPages };
 }
 
 /**
