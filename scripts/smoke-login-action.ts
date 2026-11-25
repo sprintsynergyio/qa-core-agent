@@ -592,6 +592,22 @@ try {
   check('H2. the page past the cap is named, not dropped quietly; no rule split line is printed without rules',
     open.lines[open.lines.length - 1] === 'Login probe: signed in on /auth/login, landed on /account; revealed /account (account), /account/profile (profile), /account/invoices (invoices); also behind the sign-in, not opened: /account/messages'
     && !open.lines.some((l) => l.includes('rule split')), JSON.stringify(open.lines));
+  // robots.txt disallows the whole account area (local Toolshop, Nov 25): nothing is opened, and the line says why.
+  const openRobots = await runStateProbes({ map: undefined, candidates: publicPages, openPage, ...probeOpts, robots: { disallow: ['/account'] }, login: { access } });
+  check('H2a. with no map, pages robots.txt disallows are never opened and the line names them with the rule, never as merely "not opened"',
+    openRobots.revealed.length === 0
+    && openRobots.lines[openRobots.lines.length - 1] === 'Login probe: signed in on /auth/login, landed on /account; no page revealed; behind the sign-in and disallowed by robots.txt, never opened: /account, /account/profile, /account/invoices, /account/messages (rule Disallow: /account)'
+    && JSON.stringify(openRobots.loginProbe?.robotsBlocked) === JSON.stringify(['/account', '/account/profile', '/account/invoices', '/account/messages'].map((path) => ({ path, rule: '/account' }))),
+    JSON.stringify([openRobots.lines, openRobots.loginProbe]));
+  const partRobots = await runStateProbes({ map: undefined, candidates: publicPages, openPage, ...probeOpts, robots: { disallow: ['/account/invoices'] }, login: { access } });
+  check('H2b. one disallowed page among others: the rest are opened up to the cap, and the disallowed one is named with its rule',
+    JSON.stringify(partRobots.revealed.map((r) => new URL(r.page.url).pathname)) === '["/account","/account/profile","/account/messages"]'
+    && partRobots.lines[partRobots.lines.length - 1]!.endsWith('behind the sign-in and disallowed by robots.txt, never opened: /account/invoices (rule Disallow: /account/invoices)'),
+    JSON.stringify(partRobots.lines));
+  const mapRobots = await runStateProbes({ map, candidates: publicPages, featureTokens: tokens, openPage, ...probeOpts, robots: { disallow: ['/account/messages'] }, login: { access } });
+  check('H2c. with a map, a page no feature names that robots.txt disallows is listed with its rule too',
+    mapRobots.lines[mapRobots.lines.length - 1]!.endsWith('behind the sign-in and disallowed by robots.txt, never opened: /account/messages (rule Disallow: /account/messages)')
+    && !mapRobots.lines[mapRobots.lines.length - 1]!.includes('named by no requirements feature'), mapRobots.lines[mapRobots.lines.length - 1]);
   const named = await runStateProbes({ map: undefined, candidates: publicPages, openPage, ...probeOpts, login: { access, names: ['invoices'] } });
   check('H3. with a feature list and no map, only the link a listed feature names is revealed',
     JSON.stringify(named.revealed.map((r) => [r.feature, new URL(r.page.url).pathname])) === '[["invoices","/account/invoices"]]', JSON.stringify(named.revealed.map((r) => [r.feature, r.page.url])));

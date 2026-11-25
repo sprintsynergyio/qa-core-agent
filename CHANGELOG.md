@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/probe-login.ts <url>`: runs discovery and the login probe alone, with no model call and nothing written, and prints the pages a run would find behind the sign-in.
 - `smoke-login-action`: a fixture site with pages behind a login, the probe, the plan, the tools, the emitted framework run with Playwright in TypeScript and JavaScript, and a whole run in process.
 
+### Fixed
+
+- The login probe now says when robots.txt is the reason a page behind the sign-in was not opened, and names the rule. It used to list such pages as "not opened" with no reason.
+
 ### Changed
 
 - An emitted test that signed in first now opens the page the browser was on after the sign-in. A test of the page the sign-in lands on keeps its checks; it was emitted as an empty test before.
