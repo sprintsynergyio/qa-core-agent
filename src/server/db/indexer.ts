@@ -202,6 +202,9 @@ export const UNCOVERED_STATUS: Record<string, 'not_planned' | 'planned_but_dropp
   // The global plan cap's two reasons, the same way (invariant 78; no new column).
   'cut-by-global-cap': 'not_planned',
   'page-not-planned-global-cap': 'not_planned',
+  // A shipped test cites the rule and exercises part of what it says
+  // (invariant 89). No coarse status fits; the reason column keeps the label.
+  'cited-not-exercised': 'planned_but_dropped',
 };
 
 /** Index one run directory: the runs row and its derived rows. */

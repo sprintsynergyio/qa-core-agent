@@ -1,0 +1,1830 @@
+{
+ "note": "Run ceeaf2 (run 10): the 16 shipped recordings and the plan names, read from its run-report.json. Typed values are replaced by x and every intent is emptied (the claim check reads neither). The map is the run requirements-map.json features and rules.",
+ "plan": [
+  {
+   "name": "displayed hand tools with names, images, and prices",
+   "ruleIds": []
+  },
+  {
+   "name": "sorted products by price low to high and verified ascending order",
+   "ruleIds": [
+    "R4"
+   ]
+  },
+  {
+   "name": "filtered by Hammer subcategory and only hammer products remained",
+   "ruleIds": [
+    "R3"
+   ]
+  },
+  {
+   "name": "added product to cart from detail page, cart count in header increased",
+   "ruleIds": [
+    "R6"
+   ]
+  },
+  {
+   "name": "added item to cart, opened cart, changed quantity and the line total updated",
+   "ruleIds": [
+    "R7",
+    "R8"
+   ]
+  },
+  {
+   "name": "added item to cart, opened cart, removed the product and the row disappeared from the cart table",
+   "ruleIds": [
+    "R9"
+   ]
+  },
+  {
+   "name": "submitted contact form with valid message and email",
+   "ruleIds": []
+  },
+  {
+   "name": "rejected submission when message field is empty",
+   "ruleIds": [
+    "R13"
+   ]
+  },
+  {
+   "name": "rejected an email address without an @ sign",
+   "ruleIds": [
+    "R14"
+   ]
+  },
+  {
+   "name": "logged in with valid credentials",
+   "ruleIds": []
+  },
+  {
+   "name": "rejected a wrong password",
+   "ruleIds": [
+    "R10"
+   ]
+  },
+  {
+   "name": "rejected email field left empty",
+   "ruleIds": []
+  },
+  {
+   "name": "rejected password field left empty",
+   "ruleIds": []
+  },
+  {
+   "name": "filled all required fields and registered successfully",
+   "ruleIds": []
+  },
+  {
+   "name": "rejected registration with an already-used email address",
+   "ruleIds": [
+    "R11"
+   ]
+  },
+  {
+   "name": "rejected registration with an empty required field",
+   "ruleIds": [
+    "R12"
+   ]
+  },
+  {
+   "name": "clicked a product and landed on its detail page with matching name and price",
+   "ruleIds": [
+    "R5"
+   ]
+  },
+  {
+   "name": "rejected an unregistered email address",
+   "ruleIds": []
+  },
+  {
+   "name": "rejected an empty email field",
+   "ruleIds": []
+  },
+  {
+   "name": "rejected a malformed email format",
+   "ruleIds": []
+  }
+ ],
+ "scenarios": [
+  {
+   "name": "displayed hand tools with names, images, and prices",
+   "category": "happy",
+   "feature": "catalogue",
+   "ruleIds": [],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/category/hand-tools"
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveCount",
+      "target": {
+       "level": "css",
+       "arg": "a[data-test^=\"product-\"]",
+       "intent": ""
+      },
+      "count": 1,
+      "atLeast": true,
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toContainText",
+      "target": {
+       "level": "css",
+       "arg": "a[data-test^=\"product-\"]",
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-category[0]>div[1]>div[1]>div[0]>a[0]",
+       "ambiguous": true
+      },
+      "text": "",
+      "pattern": "\\$\\d+\\.\\d{2}",
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveAttribute",
+      "target": {
+       "level": "css",
+       "arg": "a[data-test^=\"product-\"] img",
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-category[0]>div[1]>div[1]>div[0]>a[0]>div[0]>img[0]",
+       "ambiguous": true
+      },
+      "attribute": "src",
+      "value": "",
+      "pattern": "\\S",
+      "timeout": 10000
+     }
+    }
+   ]
+  },
+  {
+   "name": "sorted products by price low to high and verified ascending order",
+   "category": "happy",
+   "feature": "catalogue",
+   "ruleIds": [
+    "R4"
+   ],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/category/hand-tools"
+    },
+    {
+     "kind": "select_option",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "combobox",
+       "name": "sort"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-category[0]>div[1]>div#filters[0]>form[0]>div[0]>select[0]"
+     },
+     "by": "value",
+     "option": "price,asc",
+     "label": "Price (Low - High)"
+    },
+    {
+     "kind": "capture",
+     "varName": "cap_firstPrice",
+     "source": "text",
+     "target": {
+      "level": "css",
+      "arg": "[data-test^=\"product-\"]:nth-of-type(1) [data-test=\"product-price\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-category[0]>div[1]>div[1]>div[0]>a[0]>div[2]>span[0]>span[0]"
+     },
+     "intent": ""
+    },
+    {
+     "kind": "assert_compare",
+     "varName": "cap_firstPrice",
+     "relation": "greater",
+     "source": "text",
+     "target": {
+      "level": "css",
+      "arg": "[data-test^=\"product-\"]:nth-of-type(1) [data-test=\"product-price\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-category[0]>div[1]>div[1]>div[0]>a[0]>div[2]>span[0]>span[0]"
+     },
+     "intent": "",
+     "readVar": "cap_firstPrice_now",
+     "readTarget": {
+      "level": "css",
+      "arg": "[data-test^=\"product-\"]:nth-of-type(2) [data-test=\"product-price\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-category[0]>div[1]>div[1]>div[0]>a[1]>div[2]>span[0]>span[0]"
+     }
+    }
+   ]
+  },
+  {
+   "name": "rejected submission when message field is empty",
+   "category": "negative",
+   "feature": "contact",
+   "ruleIds": [
+    "R13"
+   ],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/contact"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "first name"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div[0]>div[0]>input#first_name[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "last name"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div[1]>div[0]>input#last_name[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "email"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div[2]>input#email[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "select_option",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "combobox",
+       "name": "subject"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[1]>div[0]>div[0]>select#subject[0]"
+     },
+     "by": "value",
+     "option": "warranty",
+     "label": "Warranty"
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"contact-submit\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[1]>div[3]>input[0]"
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toBeVisible",
+      "target": {
+       "level": "role",
+       "arg": {
+        "role": "alert"
+       },
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[1]>div[1]>div#message_alert[1]"
+      },
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toContainText",
+      "target": {
+       "level": "role",
+       "arg": {
+        "role": "alert"
+       },
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[1]>div[1]>div#message_alert[1]"
+      },
+      "text": "",
+      "pattern": "[Mm]essage",
+      "timeout": 10000
+     }
+    }
+   ]
+  },
+  {
+   "name": "rejected an email address without an @ sign",
+   "category": "negative",
+   "feature": "contact",
+   "ruleIds": [
+    "R14"
+   ],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/contact"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "first name"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div[0]>div[0]>input#first_name[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "last name"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div[1]>div[0]>input#last_name[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "email"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div[2]>input#email[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "select_option",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "combobox",
+       "name": "subject"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[1]>div[0]>div[0]>select#subject[0]"
+     },
+     "by": "value",
+     "option": "warranty",
+     "label": "Warranty"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "message"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[1]>div[1]>div[0]>textarea#message[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"contact-submit\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[1]>div[3]>input[0]"
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toBeVisible",
+      "target": {
+       "level": "role",
+       "arg": {
+        "role": "alert"
+       },
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div[2]>div#email_alert[0]"
+      },
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toContainText",
+      "target": {
+       "level": "role",
+       "arg": {
+        "role": "alert"
+       },
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div[2]>div#email_alert[0]"
+      },
+      "text": "",
+      "pattern": "[Ee]mail",
+      "timeout": 10000
+     }
+    }
+   ]
+  },
+  {
+   "name": "rejected email field left empty",
+   "category": "negative",
+   "feature": "account",
+   "ruleIds": [],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/auth/login"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "password"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-login[0]>div[0]>div[0]>div[0]>form[0]>div[1]>app-password-input[0]>div[0]>input#password[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"login-submit\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-login[0]>div[0]>div[0]>div[0]>form[0]>div[2]>input[0]"
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveAttribute",
+      "target": {
+       "level": "css",
+       "arg": "[data-test=\"email\"]",
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-login[0]>div[0]>div[0]>div[0]>form[0]>div[0]>input#email[0]"
+      },
+      "attribute": "aria-invalid",
+      "value": "true",
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toBeVisible",
+      "target": {
+       "level": "css",
+       "arg": "[data-test='email-error']",
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-login[0]>div[0]>div[0]>div[0]>form[0]>div#email-error[1]"
+      },
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveURL",
+      "pattern": "/auth/login",
+      "timeout": 10000
+     }
+    }
+   ]
+  },
+  {
+   "name": "rejected password field left empty",
+   "category": "negative",
+   "feature": "account",
+   "ruleIds": [],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/auth/login"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "email"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-login[0]>div[0]>div[0]>div[0]>form[0]>div[0]>input#email[0]"
+     },
+     "value": "",
+     "credential": "user"
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"login-submit\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-login[0]>div[0]>div[0]>div[0]>form[0]>div[2]>input[0]"
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toBeVisible",
+      "target": {
+       "level": "css",
+       "arg": "[data-test='password-error']",
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-login[0]>div[0]>div[0]>div[0]>form[0]>div#password-error[2]"
+      },
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveURL",
+      "pattern": "/auth/login",
+      "timeout": 10000
+     }
+    }
+   ]
+  },
+  {
+   "name": "rejected registration with an already-used email address",
+   "category": "negative",
+   "feature": "account",
+   "ruleIds": [
+    "R11"
+   ],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/auth/register"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "first name"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div[0]>input#first_name[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "last name"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[1]>div[0]>input#last_name[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "date of birth"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[2]>input#dob[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "select_option",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "combobox",
+       "name": "country"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[3]>div[0]>select#country[0]"
+     },
+     "by": "value",
+     "option": "AU",
+     "label": "Australia"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "postal code"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[5]>div[0]>input#postal_code[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "house number"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[6]>div[0]>input#house_number[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "street"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[7]>input#street[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "city"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[8]>div[0]>input#city[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "state"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[9]>div[0]>input#state[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "phone"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[10]>input#phone[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"email\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[11]>input#email[0]"
+     },
+     "value": "",
+     "credential": "user"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "password"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[12]>app-password-input[0]>div[0]>input#password[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"register-submit\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>button[0]"
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toBeVisible",
+      "target": {
+       "level": "css",
+       "arg": "[data-test='register-error']",
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[13]"
+      },
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toContainText",
+      "target": {
+       "level": "css",
+       "arg": "[data-test='register-error']",
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[13]"
+      },
+      "text": "",
+      "pattern": "[Ee]mail|already|exists|taken",
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveURL",
+      "pattern": "/auth/register",
+      "timeout": 10000
+     }
+    }
+   ]
+  },
+  {
+   "name": "rejected registration with an empty required field",
+   "category": "negative",
+   "feature": "account",
+   "ruleIds": [
+    "R12"
+   ],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/auth/register"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "last name"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[1]>div[0]>input#last_name[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "date of birth"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[2]>input#dob[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "select_option",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "combobox",
+       "name": "country"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[3]>div[0]>select#country[0]"
+     },
+     "by": "value",
+     "option": "AU",
+     "label": "Australia"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "postal code"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[5]>div[0]>input#postal_code[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "house number"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[6]>div[0]>input#house_number[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "street"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[7]>input#street[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "city"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[8]>div[0]>input#city[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "state"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[9]>div[0]>input#state[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "phone"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[10]>input#phone[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "email"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[11]>input#email[0]"
+     },
+     "value": "x",
+     "generate": "email"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "password"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[12]>app-password-input[0]>div[0]>input#password[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"register-submit\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>button[0]"
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toBeVisible",
+      "target": {
+       "level": "css",
+       "arg": "[data-test='first-name-error']",
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div#first_name-error[1]"
+      },
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveURL",
+      "pattern": "/auth/register",
+      "timeout": 10000
+     }
+    }
+   ]
+  },
+  {
+   "name": "rejected an empty email field",
+   "category": "negative",
+   "feature": "account",
+   "ruleIds": [],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/auth/forgot-password"
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"forgot-password-submit\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-forgot-password[0]>div[0]>div[0]>div[0]>form[0]>div[1]>input[0]"
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveAttribute",
+      "target": {
+       "level": "css",
+       "arg": "[data-test=\"email\"]",
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-forgot-password[0]>div[0]>div[0]>div[0]>form[0]>div[0]>input#email[0]"
+      },
+      "attribute": "aria-invalid",
+      "value": "true",
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toBeVisible",
+      "target": {
+       "level": "css",
+       "arg": "[data-test='email-error']",
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-forgot-password[0]>div[0]>div[0]>div[0]>form[0]>div#email-error[1]"
+      },
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveURL",
+      "pattern": "/auth/forgot-password",
+      "timeout": 10000
+     }
+    }
+   ]
+  },
+  {
+   "name": "rejected a malformed email format",
+   "category": "negative",
+   "feature": "account",
+   "ruleIds": [],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/auth/forgot-password"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "email"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-forgot-password[0]>div[0]>div[0]>div[0]>form[0]>div[0]>input#email[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"forgot-password-submit\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-forgot-password[0]>div[0]>div[0]>div[0]>form[0]>div[1]>input[0]"
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveAttribute",
+      "target": {
+       "level": "css",
+       "arg": "[data-test=\"email\"]",
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-forgot-password[0]>div[0]>div[0]>div[0]>form[0]>div[0]>input#email[0]"
+      },
+      "attribute": "aria-invalid",
+      "value": "true",
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveURL",
+      "pattern": "/auth/forgot-password",
+      "timeout": 10000
+     }
+    }
+   ]
+  },
+  {
+   "name": "clicked a product and landed on its detail page with matching name and price",
+   "category": "happy",
+   "feature": "catalogue",
+   "ruleIds": [
+    "R5"
+   ],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/rentals"
+    },
+    {
+     "kind": "capture",
+     "varName": "cap_cap_listingName",
+     "source": "text",
+     "target": {
+      "level": "css",
+      "arg": "[data-test^='product-'] h5, .card-title",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-overview[0]>div[0]>div[0]>div[0]>div[1]>div[0]>h5[0]",
+      "ambiguous": true
+     },
+     "intent": ""
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": "[data-test^='product-'] h5, .card-title",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-overview[0]>div[0]>div[0]>div[0]>div[1]>div[0]>h5[0]",
+      "ambiguous": true
+     }
+    },
+    {
+     "kind": "assert_compare",
+     "varName": "cap_cap_listingName",
+     "relation": "equal",
+     "source": "text",
+     "target": {
+      "level": "css",
+      "arg": "[data-test^='product-'] h5, .card-title",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-overview[0]>div[0]>div[0]>div[0]>div[1]>div[0]>h5[0]",
+      "ambiguous": true
+     },
+     "intent": "",
+     "readVar": "cap_cap_listingName_now",
+     "readTarget": {
+      "level": "css",
+      "arg": "h1[data-test='product-name'], [data-test='product-name']",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-detail[0]>div[0]>div[1]>h1[0]"
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveText",
+      "target": {
+       "level": "css",
+       "arg": "[data-test='unit-price']",
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-detail[0]>div[0]>div[1]>div[0]>span[0]>span[0]"
+      },
+      "text": "",
+      "pattern": "^\\d+\\.\\d{2}$",
+      "timeout": 10000
+     }
+    }
+   ]
+  },
+  {
+   "name": "filtered by Hammer subcategory and only hammer products remained",
+   "category": "happy",
+   "feature": "catalogue",
+   "ruleIds": [
+    "R3"
+   ],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/category/hand-tools"
+    },
+    {
+     "kind": "set_checked",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "checkbox",
+       "name": "Hammer",
+       "exact": true
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-category[0]>div[1]>div#filters[0]>div[0]>ul[0]>div[0]>label[0]>input@category_id[0]"
+     },
+     "checked": true,
+     "label": "Hammer"
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toBeChecked",
+      "target": {
+       "level": "role",
+       "arg": {
+        "role": "checkbox",
+        "name": "Hammer",
+        "exact": true
+       },
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-category[0]>div[1]>div#filters[0]>div[0]>ul[0]>div[0]>label[0]>input@category_id[0]"
+      },
+      "checked": true,
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "allItemsMatch",
+      "target": {
+       "level": "css",
+       "arg": "a[data-test^=\"product-\"]",
+       "intent": ""
+      },
+      "pattern": "Hammer",
+      "flags": "i",
+      "timeout": 15000
+     }
+    }
+   ]
+  },
+  {
+   "name": "added item to cart, opened cart, removed the product and the row disappeared from the cart table",
+   "category": "edge",
+   "feature": "cart",
+   "ruleIds": [
+    "R9"
+   ],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/category/hand-tools"
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "link",
+       "name": "Claw Hammer with Shock Reduction Grip"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-category[0]>div[1]>div[1]>div[0]>a[0]"
+     }
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "button",
+       "name": "Add to cart",
+       "exact": true
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-detail[0]>div[0]>div[1]>div[3]>button#btn-add-to-cart[0]"
+     }
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"nav-cart\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>app-header[0]>nav[0]>div[0]>div#navbarSupportedContent[0]>ul[0]>li[4]>a[0]"
+     }
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": ".fa-xmark",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-checkout[0]>aw-wizard[0]>div[0]>aw-wizard-step[0]>app-cart[0]>div[0]>table[0]>tbody[0]>tr[0]>td[4]>a[0]>fa-icon[0]>svg[0]"
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveCount",
+      "target": {
+       "level": "css",
+       "arg": "tbody tr",
+       "intent": ""
+      },
+      "count": 0,
+      "timeout": 10000
+     }
+    }
+   ]
+  },
+  {
+   "name": "added item to cart, opened cart, changed quantity and the line total updated",
+   "category": "happy",
+   "feature": "cart",
+   "ruleIds": [
+    "R7",
+    "R8"
+   ],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/category/hand-tools"
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "link",
+       "name": "Claw Hammer with Shock Reduction Grip"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-category[0]>div[1]>div[1]>div[0]>a[0]"
+     }
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "button",
+       "name": "Add to cart",
+       "exact": true
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-detail[0]>div[0]>div[1]>div[3]>button#btn-add-to-cart[0]"
+     }
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"nav-cart\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>app-header[0]>nav[0]>div[0]>div#navbarSupportedContent[0]>ul[0]>li[4]>a[0]"
+     }
+    },
+    {
+     "kind": "capture",
+     "varName": "cap_cap_lineTotalBefore",
+     "source": "text",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"line-price\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-checkout[0]>aw-wizard[0]>div[0]>aw-wizard-step[0]>app-cart[0]>div[0]>table[0]>tbody[0]>tr[0]>td[3]>span[0]"
+     },
+     "intent": ""
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"product-quantity\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-checkout[0]>aw-wizard[0]>div[0]>aw-wizard-step[0]>app-cart[0]>div[0]>table[0]>tbody[0]>tr[0]>td[1]>input#quantity-01m7pxj12xrwkhkh3hg0qrcj62[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "press",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"product-quantity\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-checkout[0]>aw-wizard[0]>div[0]>aw-wizard-step[0]>app-cart[0]>div[0]>table[0]>tbody[0]>tr[0]>td[1]>input#quantity-01m7pxj12xrwkhkh3hg0qrcj62[0]"
+     },
+     "key": "Tab"
+    },
+    {
+     "kind": "assert_compare",
+     "varName": "cap_cap_lineTotalBefore",
+     "relation": "greater",
+     "source": "text",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"line-price\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-checkout[0]>aw-wizard[0]>div[0]>aw-wizard-step[0]>app-cart[0]>div[0]>table[0]>tbody[0]>tr[0]>td[3]>span[0]"
+     },
+     "intent": "",
+     "readVar": "cap_cap_lineTotalBefore_now"
+    }
+   ]
+  },
+  {
+   "name": "submitted contact form with valid message and email",
+   "category": "happy",
+   "feature": "contact",
+   "ruleIds": [],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/contact"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "first name"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div[0]>div[0]>input#first_name[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "last name"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div[1]>div[0]>input#last_name[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "email"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div[2]>input#email[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "select_option",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "combobox",
+       "name": "subject"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[1]>div[0]>div[0]>select#subject[0]"
+     },
+     "by": "value",
+     "option": "warranty",
+     "label": "Warranty"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "message"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[1]>div[1]>div[0]>textarea#message[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"contact-submit\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[1]>div[3]>input[0]"
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toBeVisible",
+      "target": {
+       "level": "css",
+       "arg": ".alert-success",
+       "intent": "",
+       "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-contact[0]>div[0]>div[0]>div[0]>div[0]"
+      },
+      "timeout": 10000
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toBeHidden",
+      "target": {
+       "level": "css",
+       "arg": "[data-test=\"first-name\"]",
+       "intent": ""
+      },
+      "timeout": 10000
+     }
+    }
+   ]
+  },
+  {
+   "name": "filled all required fields and registered successfully",
+   "category": "happy",
+   "feature": "account",
+   "ruleIds": [],
+   "steps": [
+    {
+     "kind": "navigate",
+     "url": "http://localhost:4200/auth/register"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "first name"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[0]>div[0]>input#first_name[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "last name"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[1]>div[0]>input#last_name[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "date of birth"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[2]>input#dob[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "select_option",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "combobox",
+       "name": "country"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[3]>div[0]>select#country[0]"
+     },
+     "by": "value",
+     "option": "AU",
+     "label": "Australia"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "postal code"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[5]>div[0]>input#postal_code[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "house number"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[6]>div[0]>input#house_number[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "street"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[7]>input#street[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "city"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[8]>div[0]>input#city[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "state"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[9]>div[0]>input#state[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "phone"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[10]>input#phone[0]"
+     },
+     "value": "x"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "email"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[11]>input#email[0]"
+     },
+     "value": "x",
+     "generate": "email"
+    },
+    {
+     "kind": "fill",
+     "target": {
+      "level": "role",
+      "arg": {
+       "role": "textbox",
+       "name": "password"
+      },
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>div[12]>app-password-input[0]>div[0]>input#password[0]"
+     },
+     "value": "x",
+     "generate": "password"
+    },
+    {
+     "kind": "click",
+     "target": {
+      "level": "css",
+      "arg": "[data-test=\"register-submit\"]",
+      "intent": "",
+      "elementKey": "|html[0]>body[0]>app-root[0]>div[1]>app-register[0]>div[0]>div[0]>div[0]>form[0]>div[0]>button[0]"
+     }
+    },
+    {
+     "kind": "assert",
+     "name": "",
+     "assertion": {
+      "type": "toHaveURL",
+      "pattern": "/auth/login",
+      "timeout": 15000
+     }
+    }
+   ]
+  }
+ ],
+ "map": {
+  "features": [
+   {
+    "name": "catalogue",
+    "rules": [
+     {
+      "id": "R1",
+      "text": "The home page lists products with a name, an image and a price.",
+      "type": "behavior"
+     },
+     {
+      "id": "R2",
+      "text": "Typing a term in the search box and submitting shows only products whose name contains the term.",
+      "type": "behavior"
+     },
+     {
+      "id": "R3",
+      "text": "The category filter narrows the list to products in the selected category.",
+      "type": "behavior"
+     },
+     {
+      "id": "R4",
+      "text": "Sorting by price low to high orders the visible products by ascending price.",
+      "type": "behavior"
+     },
+     {
+      "id": "R5",
+      "text": "Clicking a product opens its detail page showing the same name and price as the listing.",
+      "type": "navigation"
+     }
+    ]
+   },
+   {
+    "name": "cart",
+    "rules": [
+     {
+      "id": "R6",
+      "text": "Adding a product from its detail page increases the cart count shown in the header.",
+      "type": "behavior"
+     },
+     {
+      "id": "R7",
+      "text": "The cart page lists each added product with quantity and line total.",
+      "type": "behavior"
+     },
+     {
+      "id": "R8",
+      "text": "Changing a quantity on the cart page updates the line total.",
+      "type": "behavior"
+     },
+     {
+      "id": "R9",
+      "text": "Removing a product from the cart removes its row and updates the total.",
+      "type": "behavior"
+     }
+    ]
+   },
+   {
+    "name": "account",
+    "rules": [
+     {
+      "id": "R10",
+      "text": "Login with a wrong password shows an error and the user stays on the login page.",
+      "type": "behavior"
+     },
+     {
+      "id": "R11",
+      "text": "Registration with an already used email address is rejected with an error.",
+      "type": "validation"
+     },
+     {
+      "id": "R12",
+      "text": "Submitting the registration form with an empty required field shows a required-field message.",
+      "type": "validation"
+     }
+    ]
+   },
+   {
+    "name": "contact",
+    "rules": [
+     {
+      "id": "R13",
+      "text": "The contact form rejects submission when the message field is empty and shows a validation message.",
+      "type": "validation"
+     },
+     {
+      "id": "R14",
+      "text": "The contact form rejects an email address without an @ sign.",
+      "type": "validation"
+     }
+    ]
+   }
+  ]
+ }
+}

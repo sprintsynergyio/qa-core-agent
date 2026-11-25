@@ -1,5 +1,7 @@
 import { pagesCarryingFeature } from './page-filter.js';
 import type { RequirementsMap } from './requirements.js';
+import { gapText, ruleClaimGaps, type ClaimGap } from './claim-evidence.js';
+import type { TraceStep } from './trace.js';
 
 /**
  * Rule coverage — the "considered, not automated" report.
@@ -38,7 +40,15 @@ import type { RequirementsMap } from './requirements.js';
  * silently absent.
  */
 
-export type UncoveredReason = 'not-planned' | 'planned-but-dropped' | 'planned-not-explored' | 'not-reachable' | 'not-revealed' | 'robots-disallowed' | 'cut-by-page-cap' | 'cut-by-global-cap' | 'page-not-planned-global-cap';
+export type UncoveredReason = 'not-planned' | 'planned-but-dropped' | 'planned-not-explored' | 'not-reachable' | 'not-revealed' | 'robots-disallowed' | 'cut-by-page-cap' | 'cut-by-global-cap' | 'page-not-planned-global-cap' | 'cited-not-exercised';
+
+/**
+ * The detail a cited-not-exercised rule carries (invariant 89): the shipped
+ * tests that cite it, and each claim of the rule text none of them backs.
+ */
+export function citedNotExercisedDetail(names: string[], gaps: ClaimGap[]): string {
+  return `cited by ${names.map((n) => JSON.stringify(n)).join(', ')}; no shipped test backs ${gaps.map(gapText).join('; ')}`;
+}
 
 /** The detail a cut-by-page-cap rule carries: the cut scenarios, by name. */
 export function cutByPageCapDetail(names: string[]): string {
@@ -151,6 +161,13 @@ export interface FeatureDerivation {
 export interface CitingScenario {
   name: string;
   ruleIds?: string[];
+  /**
+   * The recorded steps, when the caller has them (the run's shipped
+   * scenarios do). With them a rule is credited only when the claims of its
+   * text are backed by a citing recording (invariant 89); a scenario given
+   * without steps cannot be judged and credits the rule as before.
+   */
+  steps?: TraceStep[];
 }
 
 /**
@@ -283,7 +300,18 @@ export function computeRuleCoverage(opts: {
     for (const rule of feature.rules) {
       const surviving = opts.scenarios.filter((s) => (s.ruleIds ?? []).includes(rule.id));
       if (surviving.length > 0) {
-        covered.push({ ruleId: rule.id, scenarios: surviving.map((s) => s.name) });
+        // A cited rule is credited only when the recording exercises what the
+        // rule says (invariant 89). Run ceeaf2 counted R5 ("the same name and
+        // price") as covered by a test that compared the name only, R7 by a
+        // test that never read the quantity, R9 by one that never read the
+        // total. A scenario given without steps cannot be judged.
+        const recordings = surviving.map((s) => s.steps);
+        const gaps = recordings.every((r): r is TraceStep[] => Array.isArray(r)) ? ruleClaimGaps(rule.text, recordings) : [];
+        if (gaps.length === 0) {
+          covered.push({ ruleId: rule.id, scenarios: surviving.map((s) => s.name) });
+        } else {
+          uncovered.push({ ruleId: rule.id, text: rule.text, reason: 'cited-not-exercised', detail: citedNotExercisedDetail(surviving.map((s) => s.name), gaps) });
+        }
         continue;
       }
       const citing = opts.planned.filter((p) => (p.ruleIds ?? []).includes(rule.id));
