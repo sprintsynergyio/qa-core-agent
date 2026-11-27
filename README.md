@@ -132,6 +132,10 @@ QA-Core picks selectors in this order: `getByRole`, then `getByLabel`, then `get
 
 Every generated spec ships with an `@axe-core/playwright` accessibility check against the landing page. The check fails only on `critical` and `serious` WCAG 2 AA violations and logs the rest. This was a deliberate change in v2 — a zero-tolerance gate is unshippable because real marketing pages routinely have low-severity color-contrast nits that swamp the signal.
 
+### Accessibility findings
+
+Every run also scans the pages it tests with axe (WCAG 2 A and AA), signed out and with no model call. Each rule broken at critical or serious impact is recorded as product behavior to review, with the rule, how many elements, which pages, and a link to the rule. These show on the run page and in To review, and never count as test failures. Pages that exist only after an action or behind a sign-in are not scanned, and the report names them. An automated check finds some accessibility problems, not all of them. To scan pages without a run: `npx tsx scripts/a11y-scan.ts <url> [more urls]`.
+
 ### Per-host memory
 
 After each run, the agent saves what it learned about that site to `.qa-core/sites/<host>.json`. This includes the intents it observed and the selector cascade level that worked. The next run against the same host loads this memory into the system prompt as a cached block. Repeat runs are typically 90 percent cheaper than the cold path.

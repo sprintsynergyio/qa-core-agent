@@ -165,6 +165,20 @@ export const MIGRATIONS: Migration[] = [
       if (!cols.has('detail')) db.exec('ALTER TABLE rule_coverage ADD COLUMN detail TEXT');
     },
   },
+  {
+    // findings.source: scenario (the Explorer recorded it on a planned
+    // scenario) or a11y (one axe rule the accessibility scan found violated,
+    // invariant 91). A plain ADD COLUMN, no rebuild: every existing row is a
+    // scenario finding, which is the default. A database created from the
+    // current schema.sql already has the column.
+    version: 9,
+    name: 'finding source: scenario or accessibility scan',
+    up: (db) => {
+      const cols = new Set((db.prepare('PRAGMA table_info(findings)').all() as Array<{ name: string }>).map((c) => c.name));
+      // No findings table at all is not a database this code made (v1 creates it); there is nothing to alter then.
+      if (cols.size > 0 && !cols.has('source')) db.exec("ALTER TABLE findings ADD COLUMN source TEXT NOT NULL DEFAULT 'scenario' CHECK (source IN ('scenario', 'a11y'))");
+    },
+  },
 ];
 
 /** Open (creating the file and its directory if needed) and migrate. */

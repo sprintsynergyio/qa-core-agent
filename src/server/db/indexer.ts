@@ -1,3 +1,4 @@
+import { a11yFindingsOf, a11yObserved, a11yScenarioName } from '../../agent/a11y-scan.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -270,8 +271,34 @@ export function indexRunDir(db: Database.Database, root: string, entry: RunDirEn
       } else {
         const first = runOrder(existing.first_seen_run_id, db) <= runOrder(row.id, db) ? existing.first_seen_run_id : row.id;
         const last = runOrder(existing.last_seen_run_id, db) >= runOrder(row.id, db) ? existing.last_seen_run_id : row.id;
-        db.prepare('UPDATE findings SET run_id = ?, observed = ?, page_url = ?, first_seen_run_id = ?, last_seen_run_id = ?, kind = ? WHERE id = ?')
+        db.prepare("UPDATE findings SET run_id = ?, observed = ?, page_url = ?, first_seen_run_id = ?, last_seen_run_id = ?, kind = ?, source = 'scenario' WHERE id = ?")
           .run(last, observed, f.url, first, last, kind, id);
+      }
+      db.prepare('INSERT OR IGNORE INTO finding_runs (finding_id, run_id) VALUES (?, ?)').run(id, row.id);
+    }
+    // Accessibility findings (invariant 91): one row per axe rule the run's
+    // scan found violated at critical or serious impact. Product behavior to
+    // review (kind product), told apart by source. Scan data only; the key
+    // is the rule, so the same rule in a later run is the same finding.
+    for (const f of a11yFindingsOf(report.accessibility)) {
+      const scenario = a11yScenarioName(f);
+      const id = findingKey(projectId, scenario, f.help);
+      const observed = a11yObserved(f);
+      const pageUrl = f.pages[0]?.url ?? null;
+      const existing = db.prepare('SELECT first_seen_run_id, last_seen_run_id FROM findings WHERE id = ?').get(id) as { first_seen_run_id: string; last_seen_run_id: string } | undefined;
+      if (!existing) {
+        db.prepare(`INSERT INTO findings (id, run_id, project_id, scenario, expected, observed, page_url, status, first_seen_run_id, last_seen_run_id, kind, source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, 'product', 'a11y')`).run(id, row.id, projectId, scenario, f.help, observed, pageUrl, row.id, row.id);
+      } else {
+        const first = runOrder(existing.first_seen_run_id, db) <= runOrder(row.id, db) ? existing.first_seen_run_id : row.id;
+        const last = runOrder(existing.last_seen_run_id, db) >= runOrder(row.id, db) ? existing.last_seen_run_id : row.id;
+        // What the newest run saw is what the row says; an older run re-indexed later never overwrites it.
+        if (last === row.id) {
+          db.prepare("UPDATE findings SET run_id = ?, observed = ?, page_url = ?, first_seen_run_id = ?, last_seen_run_id = ?, kind = 'product', source = 'a11y' WHERE id = ?")
+            .run(last, observed, pageUrl, first, last, id);
+        } else {
+          db.prepare("UPDATE findings SET first_seen_run_id = ?, last_seen_run_id = ?, kind = 'product', source = 'a11y' WHERE id = ?").run(first, last, id);
+        }
       }
       db.prepare('INSERT OR IGNORE INTO finding_runs (finding_id, run_id) VALUES (?, ?)').run(id, row.id);
     }

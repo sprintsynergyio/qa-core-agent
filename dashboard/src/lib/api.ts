@@ -36,6 +36,8 @@ export interface FindingRow {
   id: string; project_id: string; project_name: string; scenario: string; expected: string; observed: string | null; page_url: string | null;
   /** product: the expected outcome never occurred; locator: the element could not be found (invariant 67). */
   kind: FindingKind;
+  /** scenario: recorded on a planned scenario; a11y: one axe rule the accessibility scan found violated (invariant 91). Absent from an older gateway. */
+  source?: 'scenario' | 'a11y';
   status: FindingStatus; notes: string | null;
   first_seen_run_id: string; last_seen_run_id: string; first_seen_at: string | null; last_seen_at: string | null;
   run_ids: string[]; times_seen: number;
@@ -127,6 +129,15 @@ export interface RunDetailStages {
   summary: {
     /** findings_count: product findings only; locator_count: elements the agent could not find, never in attention (invariant 67). */
     status: StageStatus; stat: string; shipped: number; total_usd: number; findings_count: number; locator_count?: number; uncovered_count: number; attention: number;
+    /** The accessibility scan (invariant 91): null on a report from before the scan, undefined from an older gateway. a11y_count is part of attention. */
+    a11y_count?: number;
+    accessibility?: {
+      scanned: number;
+      findings: Array<{ rule_id: string; impact: string; help: string; help_url: string; nodes: number; pages: string[]; target: string | null }>;
+      lower: string[];
+      errors: Array<{ url: string; error: string }>;
+      not_scanned: Array<{ url: string; reason: string }>;
+    } | null;
     /** findings_product and findings_locator split the findings bucket by kind, counted by the server (invariant 67). */
     funnel: { planned: number; generated: number; dropped: number; dropped_by_stage: Record<string, number>; incomplete: number; findings: number; findings_product?: number; findings_locator?: number; skipped: number; emitted_failed?: number; balanced: boolean; added: number } | null;
     emitted_check?: { inconclusive: boolean; reason: string | null; passed: number; failed: number; total: number; dropped?: number; kept?: number; removed?: number; skipped?: number; duration_ms: number; tests: Array<{ name: string; status: string; outcome?: 'passed' | 'skipped' | 'dropped' | 'kept' | 'removed'; error: string | null }> } | null;

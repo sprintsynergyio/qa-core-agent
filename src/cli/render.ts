@@ -1,3 +1,4 @@
+import { accessibilityLines } from '../agent/a11y-scan.js';
 import type { AgentEvent } from '../agent/runtime.js';
 import type { RunReport } from '../agent/trace.js';
 import { credentialSkipNote, refusedNote, renderReconciliation } from '../agent/reconcile.js';
@@ -21,12 +22,13 @@ export const CUT_MARKER = ' ... (full line in events.jsonl)';
 /**
  * Messages printed whole whatever their length: the repair pass decision
  * line (invariant 38; run 44cb3d's never reached the terminal, eaten by the
- * old 240-character drop), the state probe lines (invariant 71) and the
- * rule placement lines (invariant 90). The
+ * old 240-character drop), the state probe lines (invariant 71), the rule
+ * placement lines (invariant 90) and the accessibility scan lines
+ * (invariant 91). The
  * resume hint is printed whole too, once, as the last line of the run, by
  * the CLI itself (invariant 40); its mid-run copies are suppressed here.
  */
-const WHOLE_PREFIXES = ['repair pass:', 'repair pass skipped:', 'State probe "', 'Login probe:', 'Planner rule placement '];
+const WHOLE_PREFIXES = ['repair pass:', 'repair pass skipped:', 'State probe "', 'Login probe:', 'Planner rule placement ', 'Accessibility '];
 
 /**
  * The console line for one runtime message: null only for the mid-run copy
@@ -173,6 +175,8 @@ export function runSummaryLines(result: RunReport): string[] {
     out.push(...renderReconciliation(result.reconciliation));
   }
   out.push(...ruleCoverageLines(result));
+  // The accessibility scan, once more at the end, from the final report (invariant 91).
+  if (result.accessibility) out.push('', ...accessibilityLines(result.accessibility));
   return out;
 }
 

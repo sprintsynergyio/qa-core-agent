@@ -1,3 +1,4 @@
+import { accessibilityLines } from '../agent/a11y-scan.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { explore, type AgentEvent } from '../agent/runtime.js';
@@ -502,6 +503,7 @@ export function summarize(report: RunReport): string[] {
   }
   if (report.reconciliation) out.push(...renderReconciliation(report.reconciliation));
   if (report.ruleCoverage) out.push(...renderRuleCoverage(report.ruleCoverage));
+  if (report.accessibility) out.push(...accessibilityLines(report.accessibility));
   return out;
 }
 
