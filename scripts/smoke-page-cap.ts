@@ -198,8 +198,8 @@ const P2 = 'https://shop.example/contact';
   } as unknown as RunReport;
   rebuildAccounting(report, map, () => {});
   const reasons = Object.fromEntries((report.ruleCoverage?.uncovered ?? []).map((u) => [u.ruleId, `${u.reason}|${u.detail ?? ''}`]));
-  check('E1. after the emitted check rebuilds coverage, R2 (only the cut scenario cited it) reads cut-by-page-cap and R10 (account, /auth/login skipped for robots) reads robots-disallowed, each with its detail',
-    reasons.R2 === `cut-by-page-cap|${cutByPageCapDetail(['filtered by category'])}` && reasons.R10 === 'robots-disallowed|robots.txt disallows its matching path(s) /auth/login (rule Disallow: /auth); not loaded' && reasons.R1?.startsWith('planned-but-dropped') === true, JSON.stringify(reasons));
+  check('E1. after the emitted check rebuilds coverage, R2 (only the cut scenario cited it) reads cut-by-page-cap, R10 (account, /auth/login skipped for robots) reads robots-disallowed, and R1 (its scenario was skipped) reads planned-but-skipped with the recorded reason (invariant 90), each with its detail',
+    reasons.R2 === `cut-by-page-cap|${cutByPageCapDetail(['filtered by category'])}` && reasons.R10 === 'robots-disallowed|robots.txt disallows its matching path(s) /auth/login (rule Disallow: /auth); not loaded' && reasons.R1 === 'planned-but-skipped|"sorted by name" skipped: fixture', JSON.stringify(reasons));
 }
 
 /* ─── F. the global cap names what it cuts (invariant 78) ──────────────── */

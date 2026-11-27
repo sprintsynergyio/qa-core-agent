@@ -24,7 +24,7 @@ const STATUS_VARIANT: Record<RuleStatus, 'pass' | 'rework' | 'neutral' | 'reject
  * global cap left unplanned, is never shown as "not planned". The other
  * reasons keep their status label.
  */
-const REASON_LABEL: Record<string, { label: string; variant: 'rework' | 'neutral' }> = {
+const REASON_LABEL: Record<string, { label: string; variant: 'rework' | 'neutral' | 'finding' }> = {
   'robots-disallowed': { label: 'blocked by robots.txt', variant: 'neutral' },
   'cut-by-page-cap': { label: 'cut by page cap', variant: 'rework' },
   'cut-by-global-cap': { label: 'cut by plan cap', variant: 'rework' },
@@ -33,8 +33,13 @@ const REASON_LABEL: Record<string, { label: string; variant: 'rework' | 'neutral
   'not-revealed': { label: 'page not revealed', variant: 'neutral' },
   // A shipped test cites the rule and checks part of what it says (invariant 89).
   'cited-not-exercised': { label: 'cited, not fully checked', variant: 'rework' },
+  // Planned, and no test shipped: the scenario was skipped, or its expected
+  // outcome did not occur and a finding was recorded (invariant 90). A
+  // finding is product behavior to review, so it takes the findings color.
+  'planned-but-skipped': { label: 'planned, skipped', variant: 'neutral' },
+  'finding-recorded': { label: 'finding recorded', variant: 'finding' },
 };
-function statusOf(r: { latest_status: RuleStatus; latest_reason?: string | null }): { label: string; variant: 'pass' | 'rework' | 'neutral' | 'reject' } {
+function statusOf(r: { latest_status: RuleStatus; latest_reason?: string | null }): { label: string; variant: 'pass' | 'rework' | 'neutral' | 'reject' | 'finding' } {
   const precise = r.latest_status !== 'covered' && r.latest_reason ? REASON_LABEL[r.latest_reason] : undefined;
   return precise ?? { label: STATUS_LABEL[r.latest_status], variant: STATUS_VARIANT[r.latest_status] };
 }

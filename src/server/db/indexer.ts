@@ -205,6 +205,11 @@ export const UNCOVERED_STATUS: Record<string, 'not_planned' | 'planned_but_dropp
   // A shipped test cites the rule and exercises part of what it says
   // (invariant 89). No coarse status fits; the reason column keeps the label.
   'cited-not-exercised': 'planned_but_dropped',
+  // Planned, and no test shipped for it: the Explorer skipped the scenario,
+  // or its expected outcome did not occur and a finding was recorded
+  // (invariant 90). The reason column keeps the precise label.
+  'planned-but-skipped': 'planned_but_dropped',
+  'finding-recorded': 'planned_but_dropped',
 };
 
 /** Index one run directory: the runs row and its derived rows. */

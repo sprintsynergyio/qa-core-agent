@@ -19,6 +19,25 @@ export interface PlanTrimmed {
 }
 
 /**
+ * One rule the placement pass looked at (invariant 90). `planned`: one call
+ * planned a scenario for the rule on `pageUrl`. `rejected`: the returned
+ * scenario failed a plan check (`reason`). `none`: the call returned no
+ * usable line. `no-page`: no planned page shows what the rule needs
+ * (`reason` names what each page lacks). `no-budget`: the per-run call
+ * budget was spent. `plan-full`: the plan was at its cap and every planned
+ * scenario cites a rule.
+ */
+export interface RulePlacement {
+  ruleId: string;
+  feature: string;
+  pageUrl?: string;
+  outcome: 'planned' | 'rejected' | 'none' | 'no-page' | 'no-budget' | 'plan-full';
+  scenario?: string;
+  reason?: string;
+  costUsd: number;
+}
+
+/**
  * A page the global plan cap left unplanned (invariant 78): its URL, and its
  * feature tag when it had one. A rule whose feature's only pages are here
  * reads page-not-planned-global-cap.
@@ -440,6 +459,13 @@ export interface RunReport {
     /** What the login probe saw when it ran (invariant 88): where it signed in, where it landed, the links that exist only signed in. Absent when it did not run. */
     loginProbe?: LoginProbeRecord;
   };
+  /**
+   * Every rule the placement pass looked at (invariant 90): a rule no page's
+   * plan cited, placed on a planned page whose snapshot shows what the rule
+   * needs, with the page, the outcome and the cost. [] on a discovery run
+   * with a map that had nothing to place; absent when the pass did not run.
+   */
+  rulePlacements?: RulePlacement[];
   /**
    * Scenarios a cap cut from a page's plan (invariants 75 and 78), each with
    * the page its plan call was for, the rules it cited and the cap (cause

@@ -95,8 +95,11 @@ fl.forEach((id, i) => {
     // The global plan cap's two reasons (invariant 78).
     { ruleId: 'R5', text: 'Products filter by brand.', reason: 'cut-by-global-cap', detail: 'cut by the global plan cap: "filtered by brand"' },
     { ruleId: 'R6', text: 'A contact message is sent.', reason: 'page-not-planned-global-cap', detail: 'the global plan cap left its page(s) unplanned: https://flaky.example/contact' },
+    // A skipped scenario and a product finding (invariant 90).
+    { ruleId: 'R7', text: 'Rentals open a detail page.', reason: 'planned-but-skipped', detail: '"opened a rental" skipped: the page lists no rentals' },
+    { ruleId: 'R8', text: 'A coupon lowers the total.', reason: 'finding-recorded', detail: 'the expected outcome did not occur on the page; product behavior to review: "applied a coupon"' },
   ] };
-  writeRun('flaky-example', id, rep, i === 3 ? { 'requirements-map.json': JSON.stringify({ features: [{ name: 'account', rules: [{ id: 'R1', text: 'A registered user can log in.', type: 'behavior' }, { id: 'R2', text: 'Products sort by name.', type: 'behavior' }, { id: 'R3', text: 'The cart lists added items.', type: 'behavior' }, { id: 'R4', text: 'Reset link expires.', type: 'behavior' }, { id: 'R5', text: 'Products filter by brand.', type: 'behavior' }, { id: 'R6', text: 'A contact message is sent.', type: 'behavior' }] }], roles: [] }) } : {});
+  writeRun('flaky-example', id, rep, i === 3 ? { 'requirements-map.json': JSON.stringify({ features: [{ name: 'account', rules: [{ id: 'R1', text: 'A registered user can log in.', type: 'behavior' }, { id: 'R2', text: 'Products sort by name.', type: 'behavior' }, { id: 'R3', text: 'The cart lists added items.', type: 'behavior' }, { id: 'R4', text: 'Reset link expires.', type: 'behavior' }, { id: 'R5', text: 'Products filter by brand.', type: 'behavior' }, { id: 'R6', text: 'A contact message is sent.', type: 'behavior' }, { id: 'R7', text: 'Rentals open a detail page.', type: 'behavior' }, { id: 'R8', text: 'A coupon lowers the total.', type: 'behavior' }] }], roles: [] }) } : {});
 });
 // demoqa.com: pre-v2 records only.
 fs.writeFileSync(path.join(root, '.qa-core', 'sites', 'demoqa.com.json'), JSON.stringify({ host: 'demoqa.com', recentRuns: [
@@ -430,6 +433,9 @@ check('Z5. the rule table never shows robots-disallowed, cut-by-page-cap, cut-by
     { id: 'R4', status: 'not_planned', reason: 'not-planned', label: 'not planned', detail: null },
     { id: 'R5', status: 'not_planned', reason: 'cut-by-global-cap', label: 'cut by plan cap', detail: 'cut by the global plan cap: "filtered by brand"' },
     { id: 'R6', status: 'not_planned', reason: 'page-not-planned-global-cap', label: 'page left unplanned by plan cap', detail: 'the global plan cap left its page(s) unplanned: https://flaky.example/contact' },
+    // A skipped scenario is never "planned, dropped", and a finding takes the findings label (invariant 90).
+    { id: 'R7', status: 'planned_but_dropped', reason: 'planned-but-skipped', label: 'planned, skipped', detail: '"opened a rental" skipped: the page lists no rentals' },
+    { id: 'R8', status: 'planned_but_dropped', reason: 'finding-recorded', label: 'finding recorded', detail: 'the expected outcome did not occur on the page; product behavior to review: "applied a coupon"' },
   ]), JSON.stringify(flRules));
 check('Z4. zero console errors', errors.filter((e) => !/404|WebSocket/.test(e)).length === 0, errors.join(' | '));
 
