@@ -361,6 +361,8 @@ export interface FindingRow {
   id: string; project_id: string; project_name: string; scenario: string; expected: string; observed: string | null; page_url: string | null;
   /** product: the expected outcome never occurred; locator: the element could not be found (invariant 67). Derived by the indexer from the report. */
   kind: FindingKind;
+  /** scenario: recorded on a planned scenario; a11y: one axe rule the accessibility scan found violated (invariant 91). */
+  source: 'scenario' | 'a11y';
   status: FindingStatus; notes: string | null;
   first_seen_run_id: string; last_seen_run_id: string; first_seen_at: string | null; last_seen_at: string | null;
   /** Runs this finding was seen in (finding_runs rows), newest first. */
@@ -393,6 +395,7 @@ export function listFindings(db: Database.Database, f: { projectId: string | nul
       id: String(r.id), project_id: String(r.project_id), project_name: String(r.project_name), scenario: String(r.scenario), expected: String(r.expected),
       observed: (r.observed as string | null) ?? null, page_url: (r.page_url as string | null) ?? null,
       kind: r.kind === 'locator' ? 'locator' : 'product',
+      source: r.source === 'a11y' ? 'a11y' : 'scenario',
       status: (r.status as FindingStatus) ?? 'open', notes: (r.notes as string | null) ?? null,
       first_seen_run_id: String(r.first_seen_run_id), last_seen_run_id: String(r.last_seen_run_id),
       first_seen_at: (r.first_seen_at as string | null) ?? null, last_seen_at: (r.last_seen_at as string | null) ?? null,

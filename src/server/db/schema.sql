@@ -66,7 +66,10 @@ CREATE TABLE IF NOT EXISTS findings (
   notes             TEXT,
   -- product: the expected outcome never occurred (product behavior to review); locator: the element could not be found (a limit of the run).
   -- Derived by findingKindOf on every index pass, never set by a person (schema v7).
-  kind              TEXT NOT NULL DEFAULT 'product' CHECK (kind IN ('product', 'locator'))
+  kind              TEXT NOT NULL DEFAULT 'product' CHECK (kind IN ('product', 'locator')),
+  -- scenario: recorded by the Explorer on a planned scenario; a11y: one axe rule the accessibility scan found violated (invariant 91).
+  -- Derived on every index pass, never set by a person (schema v9).
+  source            TEXT NOT NULL DEFAULT 'scenario' CHECK (source IN ('scenario', 'a11y'))
 );
 CREATE INDEX IF NOT EXISTS findings_project_status ON findings(project_id, status);
 

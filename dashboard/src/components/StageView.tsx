@@ -7,6 +7,7 @@ import { Term } from '@/components/Term';
 import { Button } from '@/components/ui/button';
 import { exactMoney, formatCount, formatMoney, formatSize, pct } from '@/lib/format';
 import { defaultStage, stageForKey } from '@/lib/stage-tabs';
+import { pathOf } from '@/lib/utils';
 
 /**
  * The six-stage run view (dashboard v2 plan, PR B, deferred part), ported
@@ -456,7 +457,7 @@ function Summary({ sm, findings, live }: { sm: RunDetailStages['summary']; findi
       <div className="grid min-w-0 gap-3 sm:grid-cols-3 lg:col-span-3" data-testid="hero">
         <Hero n={String(sm.shipped)} label="tests shipped" testid="hero-shipped" />
         <Hero n={formatMoney(sm.total_usd)} label="total cost" title={`exact: ${exactMoney(sm.total_usd)}`} testid="hero-cost" />
-        <Hero n={String(sm.attention)} label={`need${sm.attention === 1 ? 's' : ''} attention`} sub={`${formatCount(sm.findings_count, 'finding', 'findings')} · ${formatCount(sm.uncovered_count, 'uncovered rule', 'uncovered rules')}`} subExtra={sm.locator_count ? `${formatCount(sm.locator_count, 'element', 'elements')} not found` : undefined} attention={sm.attention > 0} testid="hero-attention" />
+        <Hero n={String(sm.attention)} label={`need${sm.attention === 1 ? 's' : ''} attention`} sub={`${formatCount(sm.findings_count, 'finding', 'findings')}${sm.accessibility && sm.a11y_count !== undefined ? ` · ${formatCount(sm.a11y_count, 'accessibility issue', 'accessibility issues')}` : ''} · ${formatCount(sm.uncovered_count, 'uncovered rule', 'uncovered rules')}`} subExtra={sm.locator_count ? `${formatCount(sm.locator_count, 'element', 'elements')} not found` : undefined} attention={sm.attention > 0} testid="hero-attention" />
       </div>
         {/* The one download per run, beside the three numbers so the result and the deliverable share the first screen. */}
         {/* min-w-0: a grid item may shrink below its content, so a long zip name is cut with an ellipsis and never widens the page. */}
@@ -555,6 +556,8 @@ function Summary({ sm, findings, live }: { sm: RunDetailStages['summary']; findi
           </ul>
         )}
       </section>
+      {/* The accessibility scan (invariant 91): product behavior to review, violet, apart from the scenario findings and never in the funnel. Absent from an older gateway's payload. */}
+      {sm.accessibility !== undefined ? <AccessibilitySection a={sm.accessibility} count={sm.a11y_count} /> : null}
       {/* Elements the agent could not find: a limit of the run (invariant 67), grey, collapsed, never in To review and never a product finding. */}
       <details className="mt-4 rounded-lg border border-line bg-bg-1 p-6 text-fg-2" data-testid="locator-failures">
         <summary className="cursor-pointer text-subheading font-semibold text-neutral" data-testid="locator-failures-heading"><Term term="locatorFailures">Elements the agent could not find</Term> <span className="text-small font-normal" data-testid="locator-failures-count">{locatorFindings.length}</span></summary>
@@ -577,6 +580,43 @@ function Summary({ sm, findings, live }: { sm: RunDetailStages['summary']; findi
 }
 
 /** subExtra: a count outside the big number (the elements the agent could not find, invariant 67), in the neutral token, only when given. */
+/**
+ * What the accessibility scan found. Every value is the server's, from
+ * report.accessibility: nothing is counted here. A report from before the
+ * scan says so; it never reads as a scan with no issue.
+ */
+function AccessibilitySection({ a, count }: { a: NonNullable<RunDetailStages['summary']>['accessibility']; count: number | undefined }) {
+  if (a === undefined) return null;
+  return (
+    <section className="mt-4 rounded-lg border border-finding/40 bg-finding-soft p-6" data-testid="a11y-section">
+      <h3 className="text-subheading font-semibold text-finding" data-testid="a11y-heading"><Term term="accessibilityScan">Accessibility to review</Term> {a && count !== undefined ? <span className="tabular-nums text-small font-normal" data-testid="a11y-count">{count}</span> : null}</h3>
+      {a === null ? <div className="mt-2 text-small text-fg-2" data-testid="a11y-no-scan">This run has no accessibility scan. It was made before the scan existed.</div> : (
+        <>
+          <p className="mt-1 text-small text-fg-2" data-testid="a11y-scanned">{formatCount(a.scanned, 'page', 'pages')} scanned. One entry per rule broken at critical or serious impact, across every page that shows it.</p>
+          {a.findings.length === 0 ? <div className="mt-4 text-small text-fg-2" data-testid="a11y-none">{a.scanned > 0 ? 'No critical or serious issue found on the scanned pages.' : 'No page was scanned, so nothing was checked.'}</div> : (
+            <ul className="mt-4 flex flex-col gap-2">
+              {a.findings.map((f) => (
+                <li key={f.rule_id} className="rounded-md border border-line bg-bg-1 px-4 py-3" data-testid="a11y-finding" data-rule={f.rule_id}>
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="font-medium text-finding" data-testid="a11y-rule">{f.rule_id}</span>
+                    <Badge variant="finding" data-testid="a11y-impact">{f.impact}</Badge>
+                  </div>
+                  <div className="text-small text-fg-2" data-testid="a11y-help">{f.help}</div>
+                  <div className="text-small text-fg-2"><span className="font-medium text-fg" data-testid="a11y-nodes">{formatCount(f.nodes, 'element', 'elements')}</span> on <span data-testid="a11y-pages">{f.pages.map((u) => pathOf(u)).join(', ')}</span>{f.target ? <>; first: <span className="mono break-all" data-testid="a11y-target">{f.target}</span></> : null}</div>
+                  {f.help_url ? <a className="text-small text-brand hover:underline" href={f.help_url} target="_blank" rel="noreferrer" data-testid="a11y-link">About this rule</a> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+          {a.lower.length > 0 ? <div className="mt-3 text-small text-fg-2" data-testid="a11y-lower">Lower-impact rules noted, not counted: {a.lower.join(', ')}.</div> : null}
+          {a.errors.length > 0 ? <div className="mt-3 text-small text-rework" data-testid="a11y-errors">Could not be scanned: {a.errors.map((e) => `${pathOf(e.url)} (${e.error})`).join('; ')}.</div> : null}
+          {a.not_scanned.length > 0 ? <div className="mt-3 text-small text-fg-2" data-testid="a11y-not-scanned">Not scanned: {a.not_scanned.map((n) => `${pathOf(n.url)} (${n.reason})`).join('; ')}.</div> : null}
+        </>
+      )}
+    </section>
+  );
+}
+
 function Hero({ n, label, sub, subExtra, title, attention, testid }: { n: string; label: string; sub?: string; subExtra?: string; title?: string; attention?: boolean; testid: string }) {
   return (
     <div className={`rounded-lg border p-4 ${attention ? 'border-finding/40 bg-finding-soft' : 'border-line bg-bg-2'}`} title={title}>

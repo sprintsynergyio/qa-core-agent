@@ -123,7 +123,7 @@ fs.writeFileSync(path.join(root, '.qa-core', 'sites', 'unknown.json'), JSON.stri
 /* ─── first index ─── */
 
 const db = openDatabase(dbPath);
-check('A. schema migrated to the current version (8: rule coverage reason and detail, plain ADD COLUMNs)', schemaVersion(db) === 8);
+check('A. schema migrated to the current version (9: the finding source, a plain ADD COLUMN)', schemaVersion(db) === 9);
 const r1 = indexOutput(db, root);
 check('A2. every auto-created project stores environment NULL, never a default label', (db.prepare('SELECT COUNT(*) AS n FROM projects WHERE environment IS NOT NULL').get() as { n: number }).n === 0 && (db.prepare('SELECT COUNT(*) AS n FROM projects').get() as { n: number }).n > 0);
 check('B. 6 reported runs + 3 pre-v2 records indexed (1 record covered by a report, skipped)', r1.runs === 9 && r1.legacy === 1 && r1.legacyRecords === 3 && r1.legacyCovered === 1, JSON.stringify(r1));
@@ -260,7 +260,7 @@ const v3Path = path.join(root, 'data', 'qa-core-v3.sqlite');
 let migrated: ReturnType<typeof openDatabase> | null = null;
 let migrateError: string | null = null;
 try { migrated = openDatabase(v3Path); } catch (e) { migrateError = String(e); }
-check('V2. migration reaches the current version (8) on a database with referencing runs rows, without throwing', migrated !== null && schemaVersion(migrated) === 8, migrateError ?? (migrated ? `version ${schemaVersion(migrated)}` : ''));
+check('V2. migration reaches the current version (9) on a database with referencing runs rows, without throwing', migrated !== null && schemaVersion(migrated) === 9, migrateError ?? (migrated ? `version ${schemaVersion(migrated)}` : ''));
 if (migrated) check('V2b. v7 added findings.kind (NOT NULL, default product) without a rebuild: the column exists and the index pass can write it', (migrated.prepare('PRAGMA table_info(findings)').all() as Array<{ name: string; notnull: number; dflt_value: string | null }>).some((c) => c.name === 'kind' && c.notnull === 1 && c.dflt_value === "'product'"));
 if (migrated) {
   const runsAfter = migrated.prepare("SELECT id, project_id, status FROM runs ORDER BY id").all() as Array<{ id: string; project_id: string; status: string }>;
@@ -277,7 +277,7 @@ if (migrated) {
   indexOutput(reopened, root);
   const proj = reopened.prepare("SELECT name, environment FROM projects WHERE id = 'saucedemo-com'").get() as { name: string; environment: string | null };
   const fnd = reopened.prepare('SELECT status, notes FROM findings').get() as { status: string; notes: string | null };
-  check('V7. reopening a current-version database applies no migration and a re-index never overwrites a person-set project name or environment', schemaVersion(reopened) === 8 && proj.name === 'Sauce Renamed' && proj.environment === 'production', JSON.stringify(proj));
+  check('V7. reopening a current-version database applies no migration and a re-index never overwrites a person-set project name or environment', schemaVersion(reopened) === 9 && proj.name === 'Sauce Renamed' && proj.environment === 'production', JSON.stringify(proj));
   check('V8. finding status and notes survive the reopen and re-index too', fnd.status === 'wont-fix' && fnd.notes === 'by design', JSON.stringify(fnd));
   reopened.close();
 }
@@ -391,7 +391,7 @@ check('UC. not-reachable and not-revealed index as not_planned', UNCOVERED_STATU
   const cols = (up.prepare('PRAGMA table_info(rule_coverage)').all() as Array<{ name: string }>).map((c) => c.name);
   const kept = up.prepare('SELECT rule_id, status, reason, detail FROM rule_coverage').all();
   check('RC3. a v7 rule_coverage table gains reason and detail (NULL on the old row, kept as it was) and the version reads 8',
-    schemaVersion(up) === 8 && cols.includes('reason') && cols.includes('detail') && JSON.stringify(kept) === JSON.stringify([{ rule_id: 'R1', status: 'not_planned', reason: null, detail: null }]), JSON.stringify({ cols, kept }));
+    schemaVersion(up) === 9 && cols.includes('reason') && cols.includes('detail') && JSON.stringify(kept) === JSON.stringify([{ rule_id: 'R1', status: 'not_planned', reason: null, detail: null }]), JSON.stringify({ cols, kept }));
   up.close();
   fs.rmSync(rcRoot, { recursive: true, force: true });
 }

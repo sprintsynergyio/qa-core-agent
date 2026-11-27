@@ -113,6 +113,12 @@ export const GLOSSARY = {
 
   /* ─── findings table ─── */
 
+  // Source: src/agent/a11y-scan.ts a11yFindingsOf (one finding per axe rule violated at critical or serious impact, across the scanned pages); CLAUDE.md invariant 91; src/server/db/indexer.ts indexRunDir (source a11y, kind product).
+  accessibilityFinding: { term: 'Accessibility', text: 'An accessibility rule the scan found broken on the run\'s pages, at critical or serious impact. It comes from an automated check of each page, not from a test scenario, and it counts in To review.' },
+
+  // Source: src/agent/a11y-scan.ts scanAccessibility and a11yPagesFor (axe on the run's pages, signed out, at most 8, tags wcag2a and wcag2aa); CLAUDE.md invariant 91.
+  accessibilityScan: { term: 'Accessibility scan', text: 'An automated check of the run\'s pages against WCAG 2 A and AA rules, signed out; pages reached only by an action are named and not scanned. An automated check finds some accessibility problems, not all of them.' },
+
   // Source: src/server/db/indexer.ts indexRunDir (findings rows copy f.expected from the run report); CLAUDE.md invariant 13 (a finding records what the scenario expected and the real page state).
   findingExpected: { term: 'Expected', text: 'What the scenario expected to see, as the run report recorded it. The finding exists because the page showed something else.' },
 

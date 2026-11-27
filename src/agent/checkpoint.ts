@@ -3,6 +3,7 @@ import path from 'node:path';
 import { maskForDisk } from './credential-leak.js';
 import type { PlannedScenario } from './planner.js';
 import type { RequirementsMap } from './requirements.js';
+import type { AccessibilityScan } from './a11y-scan.js';
 import type { PlanSkippedPage, PlanTrimmed, RulePlacement, RunReport, Scenario } from './trace.js';
 import type { ScenarioVerdict } from './critic.js';
 import type { EmptyRunCause } from './reconcile.js';
@@ -112,6 +113,8 @@ export interface Checkpoint {
   planSkippedPages?: PlanSkippedPage[];
   /** What the rule placement pass did (invariant 90); [] when it placed nothing. Absent when it never ran and on older checkpoints. */
   rulePlacements?: RulePlacement[];
+  /** The accessibility scan (invariant 91), so a resumed run does not scan again. Absent on older checkpoints. */
+  accessibility?: AccessibilityScan;
   /** Form-control count from the snapshot, so the resumed step budget matches. */
   fillableFields: number;
   /** Full traces of every scenario completed so far. */
@@ -214,6 +217,7 @@ export function loadCheckpoint(file: string): Checkpoint {
     ...(Array.isArray(cp.planTrimmed) ? { planTrimmed: cp.planTrimmed } : {}),
     ...(Array.isArray(cp.planSkippedPages) ? { planSkippedPages: cp.planSkippedPages } : {}),
     ...(Array.isArray(cp.rulePlacements) ? { rulePlacements: cp.rulePlacements } : {}),
+    ...(cp.accessibility && Array.isArray(cp.accessibility.pages) ? { accessibility: cp.accessibility } : {}),
     fillableFields: typeof cp.fillableFields === 'number' ? cp.fillableFields : 0,
     completedScenarios: cp.completedScenarios,
     ...(Array.isArray(cp.verdicts) ? { verdicts: cp.verdicts } : {}),

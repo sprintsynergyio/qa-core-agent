@@ -8,6 +8,7 @@ import { hostOf } from './db/indexer.js';
 import { assignVerdicts, verdictMatchesScenario, type ScenarioVerdict } from '../agent/critic.js';
 import { EVENTS_FILE } from './events.js';
 import { findingsOf } from '../agent/reconcile.js';
+import { a11yFindingsOf, lowerImpactRules } from '../agent/a11y-scan.js';
 import { findingKindOf, type FindingKind } from '../agent/finding-kind.js';
 import { hasRequirementsCost } from '../agent/cost-total.js';
 import { countOutcomes, emittedTestOutcomes, type EmittedOutcome } from '../agent/emitted-outcome.js';
@@ -170,6 +171,23 @@ export interface RunDetailStages {
     shipped: number; total_usd: number;
     /** findings_count is product findings only; locator_count is the elements the agent could not find (invariant 67). attention = findings_count + uncovered_count; a locator failure never makes a run read attention. */
     findings_count: number; locator_count: number; uncovered_count: number; attention: number;
+    /**
+     * The accessibility scan (invariant 91), from report.accessibility: the
+     * findings (one per axe rule violated at critical or serious impact),
+     * the lower-impact rules noted, and what could not be or was not
+     * scanned. null on a report written before the scan existed, never an
+     * empty scan. a11y_count is the findings' count (0 without a scan) and
+     * is part of attention: an accessibility finding is product behavior to
+     * review.
+     */
+    a11y_count: number;
+    accessibility: {
+      scanned: number;
+      findings: Array<{ rule_id: string; impact: string; help: string; help_url: string; nodes: number; pages: string[]; target: string | null }>;
+      lower: string[];
+      errors: Array<{ url: string; error: string }>;
+      not_scanned: Array<{ url: string; reason: string }>;
+    } | null;
     /** findings_product and findings_locator split the findings bucket by kind (invariant 67), counted here from the report, never in the UI. */
     funnel: { planned: number; generated: number; dropped: number; dropped_by_stage: Record<string, number>; incomplete: number; findings: number; findings_product: number; findings_locator: number; skipped: number; emitted_failed: number; balanced: boolean; added: number } | null;
     /** report.emittedRun: the written framework run once with Playwright before the zip. null on a report from before the stage existed. */
@@ -496,13 +514,26 @@ export function buildStages(report: RunReport, artifacts: RunDetailArtifact[], t
   const findingsLocator = findingsOf(report).filter((f) => findingKindOf(f) === 'locator').length;
   const rc = report.ruleCoverage;
   const uncoveredCount = rc ? (rc.uncovered ?? []).length : 0;
-  const attention = findingsProduct + uncoveredCount;
+  // Accessibility findings are product behavior to review too (invariant 91); they never sit in the funnel.
+  const scan = report.accessibility;
+  const a11y = a11yFindingsOf(scan);
+  const attention = findingsProduct + a11y.length + uncoveredCount;
   const stabilizer = usd(report.stability?.stabilizerCostUsd);
   const summary: RunDetailStages['summary'] = {
     status: stopped || (rec && rec.balanced === false) || unmatchedVerdicts > 0 ? 'warning' : attention > 0 ? 'attention' : 'done',
     stat: `${shipped.length} shipped`,
     shipped: shipped.length, total_usd: totalUsd,
     findings_count: findingsProduct, locator_count: findingsLocator, uncovered_count: uncoveredCount, attention,
+    a11y_count: a11y.length,
+    accessibility: scan
+      ? {
+        scanned: (scan.pages ?? []).filter((p) => !p.error).length,
+        findings: a11y.map((f) => ({ rule_id: f.ruleId, impact: f.impact, help: f.help, help_url: f.helpUrl, nodes: f.nodes, pages: f.pages.map((p) => p.url), target: f.target ?? null })),
+        lower: lowerImpactRules(scan),
+        errors: (scan.pages ?? []).filter((p) => p.error).map((p) => ({ url: p.url, error: String(p.error) })),
+        not_scanned: (scan.notScanned ?? []).map((n) => ({ url: n.url, reason: n.reason })),
+      }
+      : null,
     funnel: rec ? { planned: rec.planned, generated: rec.generated, dropped: (rec.dropped ?? []).length, dropped_by_stage: droppedByStage, incomplete: (rec.incomplete ?? []).length, findings: (rec.findings ?? []).length, findings_product: findingsProduct, findings_locator: findingsLocator, skipped: (rec.skipped ?? []).length, emitted_failed: (rec.emitted_failed ?? []).length, balanced: rec.balanced, added: rec.added ?? 0 } : null,
     emitted_check: report.emittedRun
       ? (() => {

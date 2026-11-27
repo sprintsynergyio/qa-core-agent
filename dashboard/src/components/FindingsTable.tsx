@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import { api, FINDING_STATUSES, type FindingRow, type FindingStatus } from '@/lib/api';
 import { Term, TermTip, Tip } from '@/components/Term';
+import { Badge } from '@/components/ui/badge';
 import type { GlossaryKey } from '@/lib/glossary';
 import { pathOf } from '@/lib/utils';
 import { formatCount, formatDate, formatDateTime } from '@/lib/format';
@@ -151,6 +152,8 @@ function FindingRowView({ f, showProject, onChange }: { f: FindingRow; showProje
       {showProject ? <td className="px-3 py-3"><Link to={`/projects/${encodeURIComponent(f.project_id)}`} className="block truncate text-fg hover:underline" title={f.project_name}>{f.project_name}</Link></td> : null}
       <td className="px-3 py-3">
         <div className="font-medium text-finding" data-testid="finding-scenario">{f.scenario}</div>
+        {/* An accessibility finding comes from the scan of the run's pages, not from a scenario (invariant 91). */}
+        {f.source === 'a11y' ? <div className="mt-1"><TermTip term="accessibilityFinding"><Badge variant="finding" tabIndex={0} data-testid="finding-a11y">Accessibility</Badge></TermTip></div> : null}
         {f.observed ? <Tip text={f.observed} className="block"><div className="line-clamp-2 text-small text-fg-2" data-testid="finding-observed">{f.observed}</div></Tip> : null}
       </td>
       <td className="px-3 py-3"><Tip text={f.expected} className="block"><div className="line-clamp-2 text-small text-fg-2" data-testid="finding-expected">{f.expected}</div></Tip></td>

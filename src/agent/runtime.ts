@@ -20,6 +20,7 @@ import { exploreStageModels, unknownModelRefusal } from './stage-models.js';
 import { discoverPages, discoveryFeatureList, fetchRobots, robotsBlockedFeatures, robotsDisallowedDetails, writeDiscoveryJson } from './discovery.js';
 import { detectLoginFeatures, detectStateFeatures, probeRuleReasons, runStateProbes } from './state-probe.js';
 import type { PlannedPageEntry } from './planned-page.js';
+import { a11yPagesFor, accessibilityLines, scanAccessibility, type AccessibilityScan } from './a11y-scan.js';
 import { buildPlanTargets, planAcrossPages, placementDetails, ruleRetryLine, PER_PAGE_SCENARIO_CAP, GLOBAL_PLAN_CAP } from './plan-pages.js';
 import { filterPages, FILTERED_SOURCES, MAX_PAGES_WITH_FEATURES } from './page-filter.js';
 import { featureTokenMap } from './requirements.js';
@@ -278,6 +279,8 @@ export interface ExploreOptions {
   pageFilterClient?: { messages: { create: (params: Anthropic.MessageCreateParamsNonStreaming) => Promise<Anthropic.Message> } };
   /** Test seam: the Stabilizer's model client. Absent, a real client. */
   stabilizerClient?: Anthropic;
+  /** Test seam: the accessibility scan (invariant 91). Absent, axe runs on the run's pages. */
+  a11yScan?: (target: { urls: string[]; notScanned: Array<{ url: string; reason: string }> }) => Promise<AccessibilityScan>;
   onEvent?: (event: AgentEvent) => void;
 }
 
@@ -900,6 +903,8 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
     planSkippedPages: opts.resume?.planSkippedPages as PlanSkippedPage[] | undefined,
     // What the rule placement pass did (invariant 90), the same way.
     rulePlacements: opts.resume?.rulePlacements as RulePlacement[] | undefined,
+    // The accessibility scan (invariant 91): carried so a resumed run does not scan again.
+    accessibility: opts.resume?.accessibility as AccessibilityScan | undefined,
     completed: [...restoredCompleted],
     verdicts: opts.resume?.verdicts as ScenarioVerdict[] | undefined,
     spend: opts.resume
@@ -931,6 +936,7 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
     ...(cpState.planTrimmed ? { planTrimmed: cpState.planTrimmed } : {}),
     ...(cpState.planSkippedPages ? { planSkippedPages: cpState.planSkippedPages } : {}),
     ...(cpState.rulePlacements ? { rulePlacements: cpState.rulePlacements } : {}),
+    ...(cpState.accessibility ? { accessibility: cpState.accessibility } : {}),
     fillableFields: cpState.fillableFields,
     completedScenarios: cpState.completed,
     ...(cpState.verdicts && cpState.verdicts.length > 0 ? { verdicts: cpState.verdicts } : {}),
@@ -1301,6 +1307,23 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
         language: opts.language,
       };
     }
+  }
+
+  // The accessibility scan (invariant 91): axe on the run's pages, signed
+  // out, no model call. It never stops a run: a page that fails is recorded
+  // with its error. A resumed run keeps the scan its first process made.
+  if (!cpState.accessibility) {
+    const target = a11yPagesFor({ entryUrl: opts.url, ...(discoveryInfo?.pages ? { pages: discoveryInfo.pages } : {}), plan: planResult.scenarios });
+    let scan: AccessibilityScan;
+    try {
+      scan = await (opts.a11yScan ?? scanAccessibility)(target);
+    } catch (err) {
+      // The scan itself must never throw; if a seam does, every page says so.
+      scan = { tags: [], pages: target.urls.map((url) => ({ url, violations: [], error: `the scan failed: ${String((err as Error)?.message ?? err).split('\n')[0]}` })), notScanned: target.notScanned };
+    }
+    cpState.accessibility = scan;
+    for (const line of accessibilityLines(scan)) opts.onEvent?.({ type: 'message', text: line });
+    saveCheckpoint();
   }
 
   // Step 2 — Explorer (Opus). The tool-use loop.
@@ -2053,6 +2076,7 @@ export async function explore(opts: ExploreOptions): Promise<RunReport | ReviewP
     ...(cpState.planTrimmed ? { planTrimmed: cpState.planTrimmed } : {}),
     ...(cpState.planSkippedPages ? { planSkippedPages: cpState.planSkippedPages } : {}),
     ...(cpState.rulePlacements ? { rulePlacements: cpState.rulePlacements } : {}),
+    ...(cpState.accessibility ? { accessibility: cpState.accessibility } : {}),
     ...(orientationCalls !== undefined ? { orientationCalls } : {}),
     scenarios: emittedScenarios,
     cascadeStats,

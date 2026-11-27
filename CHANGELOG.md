@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rule placement. After every page is planned, a requirement that no planned test cites is planned on a page that shows what the requirement needs, with one small planning call for that rule. A search rule goes to the page that has the search box and a rule that names the home page goes to the home page, whatever feature tag the page filter gave those pages. At most five such calls per run. When the plan is full, the new test replaces a planned test that cites no rule, and the console names the one it replaced.
 - The run report records every rule the placement pass looked at (`rulePlacements`): where it was planned, or why it could not be.
 - `smoke-rule-placement`: the placement decision, the planning loop, the one-rule call, rule coverage, three served pages and a whole run in process.
+- Accessibility findings. Every run now scans its pages with axe (WCAG 2 A and AA), signed out and with no model call, and records each rule broken at critical or serious impact as product behavior to review: the rule, its impact, how many elements, on which pages, and a link to the rule. The run report carries the scan (`accessibility`), the console prints it, the dashboard shows an "Accessibility to review" section on the run page, and the findings list tags these rows "Accessibility". They count in To review and never in the test funnel. Pages reached only by an action, pages behind a sign-in and generated-id pages are not scanned and are named. A page that fails to scan is recorded with its error and never reads as clean.
+- `scripts/a11y-scan.ts <url> [more urls]`: runs the accessibility scan alone, with no model call and nothing written.
+- `smoke-a11y-findings`: the scan on a served site, a whole run in process, the index, the API and the dashboard in both themes.
 
 ### Fixed
 
@@ -27,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- "Needs attention" on a run page now counts accessibility findings beside product findings and uncovered rules. A run from before the scan reads as before.
+- The index schema is at version 9: `findings.source` (`scenario` or `a11y`), added in place with existing rows kept.
 - Rule coverage has a new reason, `cited-not-exercised`. The dashboard's rule table shows it as "cited, not fully checked".
 - Rule coverage has two more reasons. A rule whose test was skipped reads `planned-but-skipped` with the reason the run recorded, where it used to read `planned-but-dropped` with no reason. A rule whose test ended as a finding reads `finding-recorded`. The dashboard shows them as "planned, skipped" and "finding recorded".
 - A rule that could not be planned on any page now says why (for example, no planned page has a search box), where it used to read `not-planned` with nothing more.

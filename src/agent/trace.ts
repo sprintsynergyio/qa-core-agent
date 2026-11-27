@@ -1,3 +1,4 @@
+import type { AccessibilityScan } from './a11y-scan.js';
 import type { CascadeLevel, ResolvedLocator } from './selectors.js';
 import type { StageModels } from './stage-models.js';
 import type { DiscoveryMethod, ReachAction, ReachedBy, RobotsSkip } from './discovery.js';
@@ -466,6 +467,15 @@ export interface RunReport {
    * with a map that had nothing to place; absent when the pass did not run.
    */
   rulePlacements?: RulePlacement[];
+  /**
+   * The accessibility scan of the run's pages (invariant 91): what axe found
+   * on each page, the pages that could not be scanned with the error, and
+   * the pages the scan did not load with the reason. Accessibility findings
+   * are read from here (a11yFindingsOf), never from `findings`: they are not
+   * planned scenarios and never sit in the reconciliation funnel. Absent on
+   * a report written before the scan existed.
+   */
+  accessibility?: AccessibilityScan;
   /**
    * Scenarios a cap cut from a page's plan (invariants 75 and 78), each with
    * the page its plan call was for, the rules it cited and the cap (cause
